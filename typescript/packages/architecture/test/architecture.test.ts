@@ -181,6 +181,14 @@ describe("code rules (ESLint)", () => {
     expect(rules(report.violations)).toEqual(["eslint/inline-config", "eslint/no-restricted-syntax"]);
   });
 
+  it("resolves packages' subpath exports in infrastructure", async () => {
+    const report = await checkArchitecture(
+      fixture({ "src/infrastructure/config/lint.ts": `import { builtinRules } from "eslint/use-at-your-own-risk";\nexport const rules = builtinRules;\n` }),
+    );
+
+    expect(report.violations).toEqual([]);
+  });
+
   it("does not apply domain rules to infrastructure", async () => {
     const report = await checkArchitecture(
       fixture({ "src/infrastructure/config/clock.ts": `export const now = (): number => Date.now();\n` }),

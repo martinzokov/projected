@@ -5,6 +5,7 @@ import {
   ConcurrencyConflict,
   DependencyFailure,
   DependencyUnavailable,
+  RequestInProgress,
   isDispatchError,
   isInfrastructureError,
   type DispatchError,
@@ -48,10 +49,14 @@ export interface CommandQueue<C extends AnyContracts> {
   ): Promise<Result<Enqueued, DependencyUnavailable | DependencyFailure>>;
 }
 
-/** Metadata for a message sent while handling `context`: same correlation, caused by it. */
+/**
+ * Metadata for a message sent while handling `context`: same correlation, caused by it, and on
+ * behalf of the same principal.
+ */
 export function propagate(context: ExecutionContext | undefined): Partial<Metadata> {
   if (context === undefined) return {};
-  return { correlationId: context.metadata.correlationId, causationId: context.metadata.messageId };
+  const { correlationId, messageId, principal } = context.metadata;
+  return { correlationId, causationId: messageId, ...(principal === undefined ? {} : { principal }) };
 }
 
 /**
@@ -59,7 +64,7 @@ export function propagate(context: ExecutionContext | undefined): Partial<Metada
  * our contract mismatch (a failure), its infrastructure errors are ours too.
  */
 export function asCallerError(dependency: string, error: DispatchError): InfrastructureError {
-  if (ConcurrencyConflict.is(error)) {
+  if (ConcurrencyConflict.is(error) || RequestInProgress.is(error)) {
     return new DependencyUnavailable({ dependency, message: `${dependency}: ${error.message}`, cause: error });
   }
   if (isInfrastructureError(error)) return error;

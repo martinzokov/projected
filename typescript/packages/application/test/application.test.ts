@@ -18,7 +18,7 @@ import {
   type OperationDefect,
   type QueryHandler,
 } from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
 import { sequentialIds } from "@projected/testing";
 import {
   CloseTicket,
@@ -72,7 +72,7 @@ describe("contracts", () => {
   });
 
   it("cannot list the same operation twice", () => {
-    expect(() => defineContracts({ name: "tickets", commands: [OpenTicket, OpenTicket] })).toThrow(/listed twice/);
+    expect(() => defineContracts({ name: "tickets", access: "public", commands: [OpenTicket, OpenTicket] })).toThrow(/listed twice/);
   });
 
   it("are found by kind, type and version", () => {
@@ -142,7 +142,7 @@ describe("dispatch", () => {
   it("turns a throwing handler into an opaque defect and reports it", async () => {
     const onDefect = vi.fn();
     const Explode = defineCommand({ type: "explode", input: z.object({}), output: z.object({}) });
-    const app = createApplication(defineContracts({ name: "bombs", commands: [Explode] }), {
+    const app = createApplication(defineContracts({ name: "bombs", access: "public", commands: [Explode] }), {
       ids: sequentialIds(),
       onDefect,
       commands: {
@@ -160,7 +160,7 @@ describe("dispatch", () => {
 
   it("treats a handler that returns no Result as a defect", async () => {
     const Forgetful = defineQuery({ type: "forgetful", input: z.object({}), output: z.object({}) });
-    const app = createApplication(defineContracts({ name: "forgetful", queries: [Forgetful] }), {
+    const app = createApplication(defineContracts({ name: "forgetful", access: "public", queries: [Forgetful] }), {
       ids: sequentialIds(),
       queries: { "forgetful@1": (() => undefined) as unknown as QueryHandler<typeof Forgetful> },
     });
@@ -172,7 +172,7 @@ describe("dispatch", () => {
 
   it("treats output that breaks the contract as a defect", async () => {
     const Lie = defineQuery({ type: "lie", input: z.object({}), output: z.object({ n: z.number() }) });
-    const app = createApplication(defineContracts({ name: "liars", queries: [Lie] }), {
+    const app = createApplication(defineContracts({ name: "liars", access: "public", queries: [Lie] }), {
       ids: sequentialIds(),
       queries: { "lie@1": () => Result.ok({ n: "not a number" } as unknown as { n: number }) },
     });
@@ -184,7 +184,7 @@ describe("dispatch", () => {
 
   it("treats a business error the contract does not declare as a defect", async () => {
     const Sneaky = defineCommand({ type: "sneaky", input: z.object({}), output: z.object({}) });
-    const app = createApplication(defineContracts({ name: "sneaky", commands: [Sneaky] }), {
+    const app = createApplication(defineContracts({ name: "sneaky", access: "public", commands: [Sneaky] }), {
       ids: sequentialIds(),
       commands: { "sneaky@1": (() => Result.err(new TicketNotOpen({ ticketId: "x" }))) as unknown as CommandHandler<typeof Sneaky> },
     });
@@ -197,7 +197,7 @@ describe("dispatch", () => {
   it("fills in metadata and passes it to handlers", async () => {
     const seen = vi.fn();
     const Echo = defineQuery({ type: "echo", input: z.object({}), output: z.object({}) });
-    const app = createApplication(defineContracts({ name: "echo", queries: [Echo] }), {
+    const app = createApplication(defineContracts({ name: "echo", access: "public", queries: [Echo] }), {
       ids: sequentialIds("msg"),
       queries: {
         "echo@1": (_input, context) => {
@@ -389,7 +389,7 @@ describe("event handlers", () => {
         },
       },
     });
-    const app = createApplication(defineContracts({ name: "flaky" }), {
+    const app = createApplication(defineContracts({ name: "flaky", access: "public" }), {
       ids: sequentialIds(),
       eventHandling: { handlers: [flaky], store, checkpoints, inline: false },
     });
@@ -448,7 +448,17 @@ describe("compile-time guarantees", () => {
 
     expectTypeOf(outcome.unwrapOr(undefined)).toEqualTypeOf<{ ticketId: string } | undefined>();
     if (outcome.isErr()) expectTypeOf(outcome.error._tag).toEqualTypeOf<
-      "TicketAlreadyOpened" | "UnknownOperation" | "InvalidInput" | "OperationDefect" | "ConcurrencyConflict" | "DependencyUnavailable" | "DependencyFailure"
+      | "TicketAlreadyOpened"
+      | "UnknownOperation"
+      | "InvalidInput"
+      | "OperationDefect"
+      | "Unauthenticated"
+      | "Forbidden"
+      | "RequestInProgress"
+      | "IdempotencyKeyReused"
+      | "ConcurrencyConflict"
+      | "DependencyUnavailable"
+      | "DependencyFailure"
     >();
   });
 });

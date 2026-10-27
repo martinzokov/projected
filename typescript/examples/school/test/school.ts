@@ -1,26 +1,33 @@
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
 import { httpHandler } from "@projected/http";
-import { fixedClock, sequentialIds } from "@projected/testing";
-import { inMemoryStudentDirectory } from "../src/infrastructure/adapter/driven/directory/in-memory-student-directory.js";
+import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory";
+import { fixedClock, principal, sequentialIds, tokenAuthenticator } from "@projected/testing";
 import { composeSchool } from "../src/infrastructure/config/school.js";
 
-/** The real composition, with deterministic time and ids, served by the real HTTP handler. */
+export const registrar = principal("u-registrar", ["students:manage"]);
+export const teacher = principal("u-teacher");
+
+/** The real composition, with deterministic time and ids and in-memory stores, served by the real HTTP handler. */
 export function testSchool() {
   const clock = fixedClock("2023-10-01T09:00:00.000Z");
   const eventStore = inMemoryEventStore({ clock, ids: sequentialIds("event") });
   const app = composeSchool({
     eventStore,
     checkpoints: inMemoryCheckpointStore(),
-    directory: inMemoryStudentDirectory(),
+    documents: inMemoryDocumentStore(),
+    idempotency: inMemoryIdempotencyStore({ clock }),
     clock,
     ids: sequentialIds("student"),
   });
-  const handler = httpHandler(app, { messageIds: sequentialIds("request").next });
-  const post = async (path: string, body: unknown) => {
+  const handler = httpHandler(app, {
+    messageIds: sequentialIds("request").next,
+    authenticator: tokenAuthenticator({ "registrar-token": registrar, "teacher-token": teacher }),
+  });
+  /** POST as the registrar unless other headers are given. */
+  const post = async (path: string, body: unknown, headers: Record<string, string> = { authorization: "Bearer registrar-token" }) => {
     const response = await handler(
       new Request(`http://school.test${path}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify(body),
       }),
     );

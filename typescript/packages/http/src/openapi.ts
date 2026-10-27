@@ -1,4 +1,4 @@
-import type { AnyBusinessErrorClass, AnyContracts, AnyOperationContract } from "@projected/application";
+import type { Access, AnyBusinessErrorClass, AnyContracts, AnyOperationContract } from "@projected/application";
 import { panic } from "better-result";
 import { z } from "zod";
 import { HEADERS, PLURAL, operationId, operationPath } from "./protocol.js";
@@ -13,6 +13,11 @@ export interface OpenApiOptions {
   readonly servers?: ReadonlyArray<{ readonly url: string; readonly description?: string }>;
   /** Prefix for every path, matching the handler's `basePath`. */
   readonly basePath?: string;
+  /**
+   * How callers authenticate, as OpenAPI security schemes (e.g. `betterAuthSecuritySchemes`).
+   * When given, every non-public operation requires one of them.
+   */
+  readonly securitySchemes?: Readonly<Record<string, unknown>>;
 }
 
 /** An OpenAPI 3.1 document. */
@@ -34,6 +39,13 @@ const ref = (section: string, name: string) => ({ $ref: `#/components/${section}
  */
 export function openApiDocument(contracts: AnyContracts, options: OpenApiOptions = {}): OpenApiDocument {
   const basePath = (options.basePath ?? "").replace(/\/+$/, "");
+  const securitySchemes = options.securitySchemes;
+  /** Public operations need nothing; the rest need any one of the schemes. */
+  const security = (access: Access): { security?: unknown[] } => {
+    if (securitySchemes === undefined) return {};
+    if (access === "public") return { security: [] };
+    return { security: Object.keys(securitySchemes).map((scheme) => ({ [scheme]: [] })) };
+  };
   const schemas: Record<string, JsonSchema> = { ...PROTOCOL_SCHEMAS };
   const errorSources = new Map<string, string>();
   const paths: Record<string, unknown> = {};
@@ -113,6 +125,8 @@ export function openApiDocument(contracts: AnyContracts, options: OpenApiOptions
     const outputRef = component(`${name}Output`, contract.output, "output");
     const result = resultSchema(contract, outputRef);
     const isCommand = contract.kind === "command";
+    const access = contracts.accessOf(contract);
+    const isPublic = access === "public";
 
     paths[`${basePath}${operationPath(contract.kind, contract.type, contract.version)}`] = {
       post: {
@@ -121,6 +135,8 @@ export function openApiDocument(contracts: AnyContracts, options: OpenApiOptions
         ...(contract.summary === undefined ? {} : { summary: contract.summary }),
         ...(contract.description === undefined ? {} : { description: contract.description }),
         ...(contract.deprecated ? { deprecated: true } : {}),
+        "x-projected-access": access,
+        ...security(access),
         parameters: [
           ref("parameters", "MessageId"),
           ref("parameters", "CorrelationId"),
@@ -136,7 +152,8 @@ export function openApiDocument(contracts: AnyContracts, options: OpenApiOptions
             content: { "application/json": { schema: result } },
           },
           "400": ref("responses", "BadRequest"),
-          ...(isCommand ? { "409": ref("responses", "ConcurrencyConflict") } : {}),
+          ...(isPublic ? {} : { "401": ref("responses", "Unauthenticated"), "403": ref("responses", "Forbidden") }),
+          ...(isCommand ? { "409": ref("responses", "Conflict"), "422": ref("responses", "IdempotencyKeyReused") } : {}),
           "415": ref("responses", "UnsupportedMediaType"),
           "500": ref("responses", "InternalError"),
           "502": ref("responses", "BadGateway"),
@@ -229,6 +246,7 @@ export function openApiDocument(contracts: AnyContracts, options: OpenApiOptions
     paths,
     components: {
       schemas,
+      ...(securitySchemes === undefined ? {} : { securitySchemes }),
       responses: PROTOCOL_RESPONSES,
       parameters: PROTOCOL_PARAMETERS,
       headers: {
@@ -278,7 +296,12 @@ const PROTOCOL_RESPONSES: Record<string, unknown> = {
   BadRequest: problemResponse("The body is not valid JSON or does not match the operation's input schema."),
   UnsupportedMediaType: problemResponse("The body is not `application/json`."),
   PayloadTooLarge: problemResponse("The batch has more items than the service accepts."),
-  ConcurrencyConflict: problemResponse("The command raced with another change to the same data. Safe to retry."),
+  Unauthenticated: problemResponse("The operation needs an authenticated caller and the request has no valid credentials."),
+  Forbidden: problemResponse("The caller lacks a permission the operation requires (see `x-projected-access`)."),
+  Conflict: problemResponse(
+    "Retry later: the command raced with another change to the same data (`concurrency-conflict`), or a request with the same idempotency key is still running (`request-in-progress`).",
+  ),
+  IdempotencyKeyReused: problemResponse("The idempotency key was already used for a different request. Use a new key."),
   InternalError: problemResponse("A defect in the service. Details are logged, not returned."),
   BadGateway: problemResponse("A dependency of the service answered in a way it cannot handle."),
   ServiceUnavailable: problemResponse("A dependency of the service is unreachable. Retry later.", {

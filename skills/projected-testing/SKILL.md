@@ -45,7 +45,7 @@ history is events — never construct state by hand, or the test stops checking 
 Build the app with the real composition root and test doubles for the outside world:
 
 ```ts
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
 import { fixedClock, sequentialIds } from "@projected/testing";
 
 const clock = fixedClock("2023-10-01T09:00:00.000Z");

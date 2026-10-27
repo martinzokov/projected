@@ -92,7 +92,7 @@ curl -s localhost:3000/queries/enlisted-students-on-joining-date/version/1 -H 'c
 | `@projected/application` | application | `defineCommand`/`defineQuery`/`defineContracts`, handlers, ports, repository, event handlers, dispatcher |
 | `@projected/http` | infrastructure | endpoints and OpenAPI derived from contracts, typed `httpService`, Result-based `httpClient`; Node server in `@projected/http/node` |
 | `@projected/messaging` | infrastructure | queued commands, consumers, event relay over a pluggable transport |
-| `@projected/event-store-memory` | infrastructure | in-memory event and checkpoint stores |
+| `@projected/store-memory` | infrastructure | in-memory event and checkpoint stores |
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling |
 | `@projected/testing` | tests | given/when/then, fixed clock, sequential ids, event store conformance suite |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |

@@ -5,6 +5,17 @@ const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 export type OperationKind = "command" | "query";
 
 /**
+ * Who may run an operation:
+ * - `"public"` — anyone, including anonymous callers
+ * - `"authenticated"` — any authenticated principal
+ * - `{ permissions: [...] }` — a principal holding every listed permission
+ *
+ * Finer rules ("only the student themselves") are business rules: check
+ * `context.metadata.principal` in the handler and return a declared business error.
+ */
+export type Access = "public" | "authenticated" | { readonly permissions: readonly string[] };
+
+/**
  * A command or query: one business operation, at one version, with its input, output and the
  * business errors it may return. Each `(type, version)` is its own API and never changes once
  * published — evolve by adding a new version.
@@ -30,6 +41,8 @@ export interface OperationContract<
   readonly output: Out;
   /** Business errors the operation may return. A handler cannot return any other business error. */
   readonly errors: Errors;
+  /** Who may run it. `undefined` inherits the service default given to `defineContracts`. */
+  readonly access: Access | undefined;
 }
 
 export type CommandContract<
@@ -77,6 +90,8 @@ export interface DefineOperationOptions<
   readonly input: In;
   readonly output: Out;
   readonly errors?: Errors;
+  /** Overrides the service default from `defineContracts`. */
+  readonly access?: Access;
 }
 
 function defineOperation<
@@ -119,7 +134,19 @@ function defineOperation<
     input: options.input,
     output: options.output,
     errors,
+    access: options.access === undefined ? undefined : checkAccess(label, options.access),
   };
+}
+
+const PERMISSION = /^[a-z][a-z0-9-]*(:[a-z0-9-]+)*$/;
+
+function checkAccess(label: string, access: Access): Access {
+  if (access === "public" || access === "authenticated") return access;
+  if (access.permissions.length === 0) panic(`${label}: { permissions: [] } grants nothing — use "authenticated"`);
+  for (const permission of access.permissions) {
+    if (!PERMISSION.test(permission)) panic(`${label}: permission "${permission}" must look like "students:enlist"`);
+  }
+  return { permissions: [...access.permissions] };
 }
 
 /**
@@ -186,8 +213,12 @@ export interface Contracts<
   readonly description: string | undefined;
   readonly commands: Commands;
   readonly queries: Queries;
+  /** The service default for operations that do not set their own `access`. */
+  readonly access: Access;
   /** Look up a contract by kind, type and version. */
   find(kind: OperationKind, type: string, version: number): AnyOperationContract | undefined;
+  /** The access rule in force for an operation of this service. */
+  accessOf(contract: AnyOperationContract): Access;
 }
 
 export type AnyContracts = Contracts;
@@ -204,6 +235,11 @@ export interface DefineContractsOptions<
   /** Service name, kebab-case. Becomes the OpenAPI title. */
   readonly name: string;
   readonly description?: string;
+  /**
+   * Who may run operations that do not set their own `access`. Required, so that opening a
+   * service to anonymous callers is always a visible decision.
+   */
+  readonly access: Access;
   readonly commands?: Commands;
   readonly queries?: Queries;
 }
@@ -227,11 +263,14 @@ export function defineContracts<
     if (index.has(id)) panic(`defineContracts("${options.name}"): ${contract.kind} ${contract.key} is listed twice`);
     index.set(id, contract);
   }
+  const access = checkAccess(`defineContracts("${options.name}")`, options.access);
   return {
     name: options.name,
     description: options.description,
     commands,
     queries,
+    access,
     find: (kind, type, version) => index.get(`${kind}:${type}@${version}`),
+    accessOf: (contract) => contract.access ?? access,
   };
 }

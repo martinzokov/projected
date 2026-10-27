@@ -27,7 +27,7 @@ const Join = defineCommand({
 });
 let members = 0;
 const handler = httpHandler(
-  createApplication(defineContracts({ name: "club", commands: [Join] }), {
+  createApplication(defineContracts({ name: "club", access: "public", commands: [Join] }), {
     ids: sequentialIds(),
     commands: { "join-club@1": () => (members++ < 1 ? Result.ok({ memberNumber: members }) : Result.err(new Full({ capacity: 1 }))) },
   }),

@@ -15,7 +15,7 @@
       "path": ".."
     },
     {
-      "path": "../../event-store-memory"
+      "path": "../../store-memory"
     },
     {
       "path": "../../testing"

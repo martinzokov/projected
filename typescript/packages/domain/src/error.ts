@@ -17,6 +17,10 @@ const RESERVED_TAGS = [
   "ConcurrencyConflict",
   "DependencyUnavailable",
   "DependencyFailure",
+  "Unauthenticated",
+  "Forbidden",
+  "RequestInProgress",
+  "IdempotencyKeyReused",
 ];
 
 /** The instance type of an error created by {@link defineError}. */

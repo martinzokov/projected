@@ -2,7 +2,7 @@ import { checkArchitecture, formatViolations } from "@projected/architecture";
 import { openApiDocument } from "@projected/http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { relative } from "node:path";
-import { compareLock, updateLock, type ContractsLock } from "./contracts-lock.js";
+import { LOCKFILE_VERSION, compareLock, updateLock, type ContractsLock } from "./contracts-lock.js";
 import { loadContracts, type Project } from "./project.js";
 
 /** The outcome of one command: lines to print and whether it passed. */
@@ -31,7 +31,12 @@ const render = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 export async function openapi(project: Project, options: { check: boolean }): Promise<CommandResult> {
   const contracts = await loadContracts(project);
-  const document = render(openApiDocument(contracts, { version: project.version }));
+  const document = render(
+    openApiDocument(contracts, {
+      version: project.version,
+      ...(project.config.securitySchemes === undefined ? {} : { securitySchemes: project.config.securitySchemes }),
+    }),
+  );
   const file = relative(project.root, project.openapiPath);
   if (!options.check) {
     writeFileSync(project.openapiPath, document);
@@ -50,6 +55,12 @@ export async function contractsLock(
   const contracts = await loadContracts(project);
   const file = relative(project.root, project.lockPath);
   const lock = existsSync(project.lockPath) ? (JSON.parse(readFileSync(project.lockPath, "utf8")) as ContractsLock) : undefined;
+  if (lock !== undefined && lock.lockfileVersion !== LOCKFILE_VERSION && !options.rebaseline) {
+    return failWith(
+      `contracts: ${file} is lockfile version ${lock.lockfileVersion}; this projected fingerprints contracts as version ${LOCKFILE_VERSION}.`,
+      "  Upgrade it with `projected contracts --rebaseline` — fingerprints change format, not your contracts.",
+    );
+  }
   const { added, changed, removed } = lock === undefined
     ? { added: [...contracts.commands, ...contracts.queries].map((c) => `${c.kind} ${c.key}`), changed: [], removed: [] }
     : compareLock(lock, contracts);

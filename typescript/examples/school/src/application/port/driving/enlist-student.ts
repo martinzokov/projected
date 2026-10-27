@@ -14,6 +14,7 @@ export const EnlistStudentV1 = defineCommand({
   summary: "Enlist a new student",
   description: "Superseded by version 2, which lets the caller choose the id so that retries are safe.",
   deprecated: true,
+  access: { permissions: ["students:manage"] },
   input: z.object(Student),
   output: z.object({ studentId: z.string() }),
 });
@@ -23,6 +24,7 @@ export const EnlistStudentV2 = defineCommand({
   type: "enlist-student",
   version: 2,
   summary: "Enlist a new student",
+  access: { permissions: ["students:manage"] },
   input: z.object({ studentId: z.string().min(1), ...Student }),
   output: z.object({ studentId: z.string() }),
   errors: [StudentAlreadyEnlisted],

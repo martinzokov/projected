@@ -16,7 +16,7 @@
     "@projected/application": "workspace:*"
   },
   "devDependencies": {
-    "@projected/event-store-memory": "workspace:*",
+    "@projected/store-memory": "workspace:*",
     "@projected/testing": "workspace:*"
   }
 }

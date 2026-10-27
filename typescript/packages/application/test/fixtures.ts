@@ -77,6 +77,7 @@ export const OpenTicketTitles = defineQuery({
 
 export const ticketContracts = defineContracts({
   name: "tickets",
+  access: "public",
   commands: [OpenTicket, CloseTicket],
   queries: [OpenTicketTitles],
 });

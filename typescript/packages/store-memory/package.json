@@ -1,7 +1,7 @@
 {
-  "name": "@projected/event-store-memory",
+  "name": "@projected/store-memory",
   "version": "0.1.0",
-  "description": "In-memory EventStore and CheckpointStore adapters for projected. For tests, local development and demos.",
+  "description": "In-memory adapters for every projected storage port: events, checkpoints, idempotency, documents. For tests, local development and demos.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -11,7 +11,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@projected/application": "workspace:*"
   },

@@ -1,0 +1,23 @@
+{
+  "name": "@projected/kafka",
+  "version": "0.1.0",
+  "description": "Apache Kafka transport for projected's messaging: queued commands, consumers and the event relay over Kafka topics.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@platformatic/kafka": "^2.14.0",
+    "@projected/application": "workspace:*",
+    "@projected/messaging": "workspace:*"
+  },
+  "devDependencies": {
+    "@projected/testing": "workspace:*"
+  }
+}

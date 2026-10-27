@@ -14,7 +14,7 @@ are values, never exceptions.
 
 | Need | Port | Adapter |
 |---|---|---|
-| store events | `EventStore` (framework) | `@projected/event-store-memory`, future database stores |
+| store events | `EventStore` (framework) | `@projected/store-memory`, future database stores |
 | current time / ids | `Clock`, `IdGenerator` (framework) | `@projected/runtime`, `@projected/testing` |
 | a read model | your own, e.g. `StudentDirectory` | your adapter in `adapter/driven/<name>` |
 | another projected service | `RemoteService<typeof theirContracts>` (framework) | `httpService`, `inProcessService` |

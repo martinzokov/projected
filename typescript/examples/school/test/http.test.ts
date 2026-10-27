@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { testSchool } from "./school.js";
 
+const asTeacher = { authorization: "Bearer teacher-token" };
+
 /** The examples from "It's time to put REST to rest", against the real HTTP adapter. */
 describe("school over HTTP", () => {
   const bruce = { firstname: "Bruce", lastname: "Wayne", "joiningDate": "2023-09-22" };
@@ -115,6 +117,49 @@ describe("school over HTTP", () => {
         { studentId: "student-1", previousLastname: "Wayne", newLastname: "Kent", reportedAt: "2023-10-01T09:00:00.000Z" },
       ],
     ]);
-    expect(eventStore.all[1]?.metadata).toEqual({ correlationId: "request-2", causationId: "request-2" });
+    expect(eventStore.all[1]?.metadata).toEqual({ correlationId: "request-2", causationId: "request-2", principalId: "u-registrar" });
+  });
+});
+
+describe("school access rules", () => {
+  const bruce = { studentId: "s-1", firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" };
+
+  it("lets any member of staff look students up", async () => {
+    const { post } = testSchool();
+
+    const profile = await post("/queries/student-profile/version/1", { studentId: "s-1" }, asTeacher);
+
+    expect(profile.status).toBe(200);
+  });
+
+  it("keeps enrolment changes to staff who manage students", async () => {
+    const { post } = testSchool();
+
+    const byTeacher = await post("/commands/enlist-student/version/2", bruce, asTeacher);
+    const byRegistrar = await post("/commands/enlist-student/version/2", bruce);
+
+    expect([byTeacher.status, byRegistrar.status]).toEqual([403, 200]);
+  });
+
+  it("turns anonymous callers away", async () => {
+    const { post } = testSchool();
+
+    const anonymous = await post("/queries/student-profile/version/1", { studentId: "s-1" }, {});
+
+    expect(anonymous.status).toBe(401);
+  });
+});
+
+describe("retried enlistments", () => {
+  it("enlist one student, however often the request is retried", async () => {
+    const { post, eventStore } = testSchool();
+    const retry = { authorization: "Bearer registrar-token", "idempotency-key": "enlist-bruce" };
+    const bruce = { firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" };
+
+    const first = await post("/commands/enlist-student/version/1", bruce, retry);
+    const second = await post("/commands/enlist-student/version/1", bruce, retry);
+
+    expect(second.body).toEqual(first.body);
+    expect(eventStore.all).toHaveLength(1);
   });
 });

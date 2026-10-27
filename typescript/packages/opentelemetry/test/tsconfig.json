@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "../.tsbuild/test",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "references": [
+    { "path": ".." },
+    { "path": "../../application" },
+    { "path": "../../http" },
+    { "path": "../../messaging" },
+    { "path": "../../store-memory" },
+    { "path": "../../testing" }
+  ]
+}

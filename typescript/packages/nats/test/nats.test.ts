@@ -1,0 +1,61 @@
+import { afterAll, describe, expect, it } from "vitest";
+import { Result, createApplication, defineCommand, defineContracts, z } from "@projected/application";
+import { natsTransport } from "@projected/nats";
+import { commandQueue, consumeCommands } from "@projected/messaging";
+import { messageTransportConformance, principal, sequentialIds } from "@projected/testing";
+
+/**
+ * Runs against a real NATS server with JetStream. Set PROJECTED_TEST_NATS_URL to enable, e.g.
+ *   docker run -d -p 4222:4222 nats:2.12-alpine -js
+ *   PROJECTED_TEST_NATS_URL=nats://localhost:4222 pnpm test
+ */
+const servers = process.env.PROJECTED_TEST_NATS_URL;
+const transports: Array<ReturnType<typeof natsTransport>> = [];
+let streams = 0;
+const create = () => {
+  // A stream per transport keeps tests independent of each other's consumers.
+  const run = `${process.pid}_${++streams}`;
+  const transport = natsTransport({
+    servers: servers ?? "",
+    stream: `TEST_${run}`,
+    subjectPrefix: `test_${run}`,
+    maxAttempts: 3,
+    retryDelayMs: () => 20,
+  });
+  transports.push(transport);
+  return transport;
+};
+afterAll(async () => {
+  await Promise.all(transports.map((transport) => transport.close()));
+});
+
+const suite = servers === undefined ? describe.skip : describe;
+
+suite("nats", () => {
+  messageTransportConformance("nats", { create: () => ({ transport: create() }), maxAttempts: 3, durable: true });
+
+  it("carries queued commands from one service to another", async () => {
+    const transport = create();
+    const Notify = defineCommand({ type: "notify-parent", input: z.object({ studentId: z.string() }), output: z.object({}) });
+    const contracts = defineContracts({ name: "notifications", access: "authenticated", commands: [Notify] });
+    const notified: Array<[string, string | undefined]> = [];
+    const app = createApplication(contracts, {
+      ids: sequentialIds(),
+      commands: {
+        "notify-parent@1": ({ studentId }, context) => {
+          notified.push([studentId, context.metadata.principal?.id]);
+          return Result.ok({});
+        },
+      },
+    });
+    const topic = `notifications.commands.${Date.now()}`;
+    await consumeCommands(app, transport, { topic });
+    const context = { metadata: { messageId: "m", correlationId: "c", causationId: undefined, idempotencyKey: undefined, principal: principal("u-1") } };
+
+    (await commandQueue(contracts, transport, { topic, ids: sequentialIds("cmd") }).enqueue(Notify, { studentId: "s-1" }, context)).unwrap();
+    const deadline = Date.now() + 30_000;
+    while (notified.length === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(notified).toEqual([["s-1", "u-1"]]);
+  }, 40_000);
+});

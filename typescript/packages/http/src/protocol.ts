@@ -14,6 +14,8 @@ export const HEADERS = {
   correlationId: "x-correlation-id",
   causationId: "x-causation-id",
   idempotencyKey: "idempotency-key",
+  traceparent: "traceparent",
+  tracestate: "tracestate",
 } as const;
 
 export const PLURAL: Record<OperationKind, "commands" | "queries"> = { command: "commands", query: "queries" };
@@ -45,6 +47,10 @@ export const PROBLEM_TYPES = {
   malformedRequest: "urn:projected:problem:malformed-request",
   payloadTooLarge: "urn:projected:problem:payload-too-large",
   unknownOperation: "urn:projected:problem:unknown-operation",
+  unauthenticated: "urn:projected:problem:unauthenticated",
+  forbidden: "urn:projected:problem:forbidden",
+  requestInProgress: "urn:projected:problem:request-in-progress",
+  idempotencyKeyReused: "urn:projected:problem:idempotency-key-reused",
   invalidInput: "urn:projected:problem:invalid-input",
   concurrencyConflict: "urn:projected:problem:concurrency-conflict",
   dependencyUnavailable: "urn:projected:problem:dependency-unavailable",
@@ -63,6 +69,14 @@ export function problemForDispatchError(error: DispatchError): Problem {
       return problem(PROBLEM_TYPES.unknownOperation, "Unknown operation", 404, error.message);
     case "InvalidInput":
       return { ...problem(PROBLEM_TYPES.invalidInput, "Invalid input", 400, error.message), issues: error.issues };
+    case "Unauthenticated":
+      return problem(PROBLEM_TYPES.unauthenticated, "Authentication required", 401, error.message);
+    case "Forbidden":
+      return problem(PROBLEM_TYPES.forbidden, "Forbidden", 403, error.message);
+    case "RequestInProgress":
+      return problem(PROBLEM_TYPES.requestInProgress, "A request with this idempotency key is in progress", 409);
+    case "IdempotencyKeyReused":
+      return problem(PROBLEM_TYPES.idempotencyKeyReused, "Idempotency key reused for a different request", 422);
     case "ConcurrencyConflict":
       return problem(PROBLEM_TYPES.concurrencyConflict, "Concurrent modification, retry the request", 409);
     case "DependencyUnavailable":

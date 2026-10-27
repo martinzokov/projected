@@ -23,7 +23,7 @@ describe("fingerprint", () => {
       input: z.object({ seat: z.string().describe("Seat label, e.g. 12C") }),
     });
 
-    expect(fingerprint(documented)).toBe(fingerprint(reserve()));
+    expect(fingerprint(documented, "public")).toBe(fingerprint(reserve(), "public"));
   });
 
   it.each([
@@ -33,12 +33,16 @@ describe("fingerprint", () => {
     ["a new declared error", { errors: [SeatTaken, defineError("SoldOut")] }],
     ["different error data", { errors: [SeatTakenV2] }],
   ])("changes with %s", (_name, overrides) => {
-    expect(fingerprint(reserve(overrides as never))).not.toBe(fingerprint(reserve()));
+    expect(fingerprint(reserve(overrides as never), "public")).not.toBe(fingerprint(reserve(), "public"));
+  });
+
+  it("changes with the access rule", () => {
+    expect(fingerprint(reserve(), "public")).not.toBe(fingerprint(reserve(), { permissions: ["seats:reserve"] }));
   });
 });
 
 describe("lock", () => {
-  const v1 = defineContracts({ name: "cinema", commands: [reserve()], queries: [seats] });
+  const v1 = defineContracts({ name: "cinema", access: "public", commands: [reserve()], queries: [seats] });
 
   it("records every operation", () => {
     expect(Object.keys(lockOf(v1).operations)).toEqual(["command reserve-seat@1", "query free-seats@1"]);
@@ -47,6 +51,7 @@ describe("lock", () => {
   it("accepts new versions next to published ones", () => {
     const v2 = defineContracts({
       name: "cinema",
+      access: "public",
       commands: [reserve(), reserve({ version: 2, input: z.object({ seat: z.string(), row: z.number() }) })],
       queries: [seats],
     });
@@ -55,13 +60,13 @@ describe("lock", () => {
   });
 
   it("detects a published operation that changed", () => {
-    const edited = defineContracts({ name: "cinema", commands: [reserve({ output: z.object({}) })], queries: [seats] });
+    const edited = defineContracts({ name: "cinema", access: "public", commands: [reserve({ output: z.object({}) })], queries: [seats] });
 
     expect(compareLock(lockOf(v1), edited).changed).toEqual(["command reserve-seat@1"]);
   });
 
   it("detects removals, and only drops them when allowed", () => {
-    const shrunk = defineContracts({ name: "cinema", commands: [reserve()] });
+    const shrunk = defineContracts({ name: "cinema", access: "public", commands: [reserve()] });
 
     expect(compareLock(lockOf(v1), shrunk).removed).toEqual(["query free-seats@1"]);
     expect(Object.keys(updateLock(lockOf(v1), shrunk).operations)).toContain("query free-seats@1");
@@ -69,13 +74,13 @@ describe("lock", () => {
   });
 
   it("accepts current fingerprints only when rebaselining", () => {
-    const edited = defineContracts({ name: "cinema", commands: [reserve({ output: z.object({}) })], queries: [seats] });
+    const edited = defineContracts({ name: "cinema", access: "public", commands: [reserve({ output: z.object({}) })], queries: [seats] });
 
     expect(compareLock(updateLock(lockOf(v1), edited, { rebaseline: true }), edited).changed).toEqual([]);
   });
 
   it("keeps the published fingerprint of a changed operation on update", () => {
-    const edited = defineContracts({ name: "cinema", commands: [reserve({ output: z.object({}) })], queries: [seats] });
+    const edited = defineContracts({ name: "cinema", access: "public", commands: [reserve({ output: z.object({}) })], queries: [seats] });
 
     expect(updateLock(lockOf(v1), edited).operations["command reserve-seat@1"]).toBe(lockOf(v1).operations["command reserve-seat@1"]);
   });

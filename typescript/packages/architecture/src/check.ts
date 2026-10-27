@@ -40,7 +40,13 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
     const result = await cruise(
       ["src"],
       { ...rest, ruleSet: { forbidden: config.forbidden ?? [] }, validate: true, outputType: "json" },
-      { extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] } },
+      {
+        extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] },
+        // Resolve packages the way Node does, including subpath exports (`better-auth/plugins`).
+        exportsFields: ["exports"],
+        conditionNames: ["import", "node", "types", "default", "require"],
+        mainFields: ["module", "main", "types"],
+      },
     );
     cruised = (typeof result.output === "string" ? JSON.parse(result.output) : result.output) as ICruiseResult;
   } finally {

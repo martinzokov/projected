@@ -70,8 +70,51 @@ export class OperationDefect extends TaggedError("OperationDefect")<{
   cause?: unknown;
 }> {}
 
-export type DispatchError = UnknownOperation | InvalidInput | OperationDefect | InfrastructureError;
+/** The operation is not public and the request carries no (valid) credentials. */
+export class Unauthenticated extends TaggedError("Unauthenticated")<{
+  operation: string;
+  message: string;
+}> {}
+
+/** The principal is known but lacks a permission the operation requires. */
+export class Forbidden extends TaggedError("Forbidden")<{
+  operation: string;
+  missing: readonly string[];
+  message: string;
+}> {}
+
+/** A command with the same idempotency key is being processed right now. Retry later. */
+export class RequestInProgress extends TaggedError("RequestInProgress")<{
+  idempotencyKey: string;
+  message: string;
+}> {}
+
+/** The idempotency key was already used for a different request. Use a new key. */
+export class IdempotencyKeyReused extends TaggedError("IdempotencyKeyReused")<{
+  idempotencyKey: string;
+  message: string;
+}> {}
+
+export type AccessError = Unauthenticated | Forbidden;
+export type IdempotencyError = RequestInProgress | IdempotencyKeyReused;
+
+export type DispatchError =
+  | UnknownOperation
+  | InvalidInput
+  | OperationDefect
+  | AccessError
+  | IdempotencyError
+  | InfrastructureError;
 
 export function isDispatchError(value: unknown): value is DispatchError {
-  return UnknownOperation.is(value) || InvalidInput.is(value) || OperationDefect.is(value) || isInfrastructureError(value);
+  return (
+    UnknownOperation.is(value) ||
+    InvalidInput.is(value) ||
+    OperationDefect.is(value) ||
+    Unauthenticated.is(value) ||
+    Forbidden.is(value) ||
+    RequestInProgress.is(value) ||
+    IdempotencyKeyReused.is(value) ||
+    isInfrastructureError(value)
+  );
 }

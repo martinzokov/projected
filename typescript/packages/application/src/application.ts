@@ -1,5 +1,6 @@
 import { Result, isTaggedError, panic, type BusinessError } from "@projected/domain";
 import type {
+  Access,
   AnyContracts,
   AnyOperationContract,
   ErrorOf,
@@ -9,15 +10,29 @@ import type {
   RequestOf,
 } from "./contract.js";
 import {
+  Forbidden,
+  IdempotencyKeyReused,
   InvalidInput,
   OperationDefect,
+  RequestInProgress,
+  Unauthenticated,
   UnknownOperation,
   isInfrastructureError,
   type DispatchError,
   type InfrastructureError,
 } from "./errors.js";
 import { catchUp, type CatchUpReport, type EventHandler } from "./event-handler.js";
-import type { CheckpointStore, EventStore, ExecutionContext, IdGenerator, Metadata } from "./ports.js";
+import { canonicalJson, sha256 } from "./fingerprint.js";
+import type {
+  CheckpointStore,
+  EventStore,
+  ExecutionContext,
+  IdGenerator,
+  IdempotencyStore,
+  Metadata,
+  Principal,
+} from "./ports.js";
+import { currentTrace, noTelemetry, type Span, type Telemetry } from "./telemetry.js";
 import { decodeWireError, encodeWireError, toValidationIssues, type OperationRequest, type OperationResult } from "./wire.js";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -67,10 +82,26 @@ export interface EventHandlingOptions {
   readonly inline?: boolean;
 }
 
+export interface IdempotencyOptions {
+  readonly store: IdempotencyStore;
+  /** How long a claimed key stays locked while its command runs. Defaults to 60 s. */
+  readonly lockMs?: number;
+  /** How long a completed outcome is remembered. Defaults to 24 h. */
+  readonly ttlMs?: number;
+}
+
 export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
   /** Generates message ids for requests that arrive without one. */
   readonly ids: IdGenerator;
   readonly eventHandling?: EventHandlingOptions;
+  /**
+   * Duplicate command protection. Commands that carry an idempotency key — the
+   * `Idempotency-Key` header, or the message id of a queued command — run at most once per key;
+   * repeats get the stored outcome.
+   */
+  readonly idempotency?: IdempotencyOptions;
+  /** Tracing. Defaults to {@link noTelemetry}. Transports use the same instance. */
+  readonly telemetry?: Telemetry;
   /** Called for every defect, before it is turned into an opaque error. Wire your logger here. */
   readonly onDefect?: (defect: OperationDefect) => void;
   /** Called when an inline catch-up fails. The command itself has already succeeded. */
@@ -80,6 +111,7 @@ export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
 /** A service: contracts bound to handlers, callable from any transport. */
 export interface Application<C extends AnyContracts = AnyContracts> {
   readonly contracts: C;
+  readonly telemetry: Telemetry;
   /** Run an operation from untyped input, as transports do. */
   dispatch(request: OperationRequest): Promise<Result<OperationResult, DispatchError>>;
   /** Run an operation with typed input and output, through the same path as {@link dispatch}. */
@@ -90,6 +122,22 @@ export interface Application<C extends AnyContracts = AnyContracts> {
   ): Promise<Result<OutputOf<Op>, ErrorOf<Op> | DispatchError>>;
   /** Feed every event handler the events recorded since its checkpoint. */
   catchUp(): Promise<Result<readonly CatchUpReport[], InfrastructureError>>;
+}
+
+/** Why a principal may not run an operation under `access`, or `undefined` when it may. */
+export function checkAccess(
+  operation: string,
+  access: Access,
+  principal: Principal | undefined,
+): Unauthenticated | Forbidden | undefined {
+  if (access === "public") return undefined;
+  if (principal === undefined) {
+    return new Unauthenticated({ operation, message: `${operation} requires an authenticated caller` });
+  }
+  if (access === "authenticated") return undefined;
+  const missing = access.permissions.filter((permission) => !principal.permissions.includes(permission));
+  if (missing.length === 0) return undefined;
+  return new Forbidden({ operation, missing, message: `${operation} requires ${missing.join(", ")}` });
 }
 
 /**
@@ -105,6 +153,7 @@ export interface Application<C extends AnyContracts = AnyContracts> {
  * ```
  */
 export function createApplication<C extends AnyContracts>(contracts: C, options: ApplicationOptions<C>): Application<C> {
+  const telemetry = options.telemetry ?? noTelemetry;
   const handlers = new Map<string, Handler<AnyOperationContract>>();
   const register = (kind: string, map: object | undefined, operations: readonly AnyOperationContract[]) => {
     const entries = (map ?? {}) as Record<string, Handler<AnyOperationContract>>;
@@ -128,7 +177,7 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       if (eventHandling === undefined) return Result.ok([]);
       const reports: CatchUpReport[] = [];
       for (const handler of eventHandling.handlers) {
-        const report = await catchUp(handler, eventHandling.store, eventHandling.checkpoints);
+        const report = await catchUp(handler, eventHandling.store, eventHandling.checkpoints, { telemetry });
         if (report.isErr()) return Result.err(report.error);
         reports.push(report.value);
       }
@@ -146,48 +195,34 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
 
   const completeMetadata = (given: Partial<Metadata> | undefined): Metadata => {
     const messageId = given?.messageId ?? options.ids.next();
+    const trace = currentTrace(telemetry);
     return {
       messageId,
       correlationId: given?.correlationId ?? messageId,
       causationId: given?.causationId,
       idempotencyKey: given?.idempotencyKey,
+      ...(given?.principal === undefined ? {} : { principal: given.principal }),
+      ...(trace === undefined ? {} : { trace }),
     };
   };
 
-  const dispatch = async (request: OperationRequest): Promise<Result<OperationResult, DispatchError>> => {
-    const contract = contracts.find(request.kind, request.type, request.version);
-    const handler = contract && handlers.get(`${contract.kind}:${contract.key}`);
-    if (contract === undefined || handler === undefined) {
-      return Result.err(
-        new UnknownOperation({
-          kind: request.kind,
-          type: request.type,
-          version: request.version,
-          message: `No ${request.kind} ${request.type} at version ${request.version}`,
-        }),
-      );
-    }
-    const input = contract.input.safeParse(request.input);
-    if (!input.success) {
-      return Result.err(
-        new InvalidInput({
-          issues: toValidationIssues(input.error.issues),
-          message: `Invalid input for ${contract.kind} ${contract.key}`,
-        }),
-      );
-    }
-
+  /** Run the handler and classify its outcome. */
+  const run = async (
+    contract: AnyOperationContract,
+    handler: Handler<AnyOperationContract>,
+    input: unknown,
+    metadata: Metadata,
+  ): Promise<Result<OperationResult, DispatchError>> => {
     let outcome: unknown;
     try {
-      outcome = await handler(input.data, { metadata: completeMetadata(request.metadata) });
+      outcome = await handler(input, { metadata });
     } catch (cause) {
       return defect(contract, "handler threw", cause);
     }
     if (!isResult(outcome)) return defect(contract, "handler did not return a Result", outcome);
-    const result = outcome;
 
-    if (result.isOk()) {
-      const output = contract.output.safeParse(result.value);
+    if (outcome.isOk()) {
+      const output = contract.output.safeParse(outcome.value);
       if (!output.success) return defect(contract, "handler output does not match the contract", output.error);
       if (contract.kind === "command" && eventHandling !== undefined && eventHandling.inline !== false) {
         const caughtUp = await runCatchUp();
@@ -195,15 +230,126 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       }
       return Result.ok({ status: "ok", value: output.data });
     }
-    const error = result.error;
+    const error = outcome.error;
     if (isInfrastructureError(error)) return Result.err(error);
     const wire = isTaggedError(error) ? encodeWireError(contract, error as BusinessError) : undefined;
     if (wire === undefined) return defect(contract, "handler returned an error its contract does not declare", error);
     return Result.ok({ status: "error", error: wire });
   };
 
+  /** Run a command at most once per idempotency key, replaying the stored outcome for repeats. */
+  const runOnce = async (
+    idempotency: IdempotencyOptions,
+    key: string,
+    contract: AnyOperationContract,
+    input: unknown,
+    metadata: Metadata,
+    span: Span,
+  ): Promise<Result<OperationResult, DispatchError>> => {
+    const handler = handlers.get(`${contract.kind}:${contract.key}`) as Handler<AnyOperationContract>;
+    // Keys are scoped to the caller, so one principal can never replay another's outcome.
+    const scoped = `${contracts.name}:${metadata.principal?.id ?? "anonymous"}:${key}`;
+    const fingerprint = sha256(canonicalJson({ kind: contract.kind, operation: contract.key, input }));
+    const claim = await idempotency.store.claim(scoped, fingerprint, {
+      lockMs: idempotency.lockMs ?? 60_000,
+      ttlMs: idempotency.ttlMs ?? 24 * 60 * 60 * 1000,
+    });
+    if (claim.isErr()) return Result.err(claim.error);
+    const state = claim.value;
+    if (state.status !== "claimed" && state.fingerprint !== fingerprint) {
+      return Result.err(
+        new IdempotencyKeyReused({ idempotencyKey: key, message: `Idempotency key ${key} was used for a different request` }),
+      );
+    }
+    if (state.status === "completed") {
+      span.setAttributes({ "projected.idempotency": "replayed" });
+      return Result.ok(state.result);
+    }
+    if (state.status === "in-progress") {
+      return Result.err(new RequestInProgress({ idempotencyKey: key, message: `A request with key ${key} is still running` }));
+    }
+
+    span.setAttributes({ "projected.idempotency": "first" });
+    const outcome = await run(contract, handler, input, metadata);
+    // Business outcomes are final and remembered; anything else may succeed on a retry.
+    const settled = outcome.isOk()
+      ? await idempotency.store.complete(scoped, outcome.value)
+      : await idempotency.store.release(scoped);
+    // The command ran either way, so the caller still gets its outcome. An unrecorded outcome
+    // only matters if this exact request is retried after the lock expires — make that visible.
+    if (settled.isErr()) span.fail(`could not record the idempotent outcome: ${settled.error.message}`);
+    return outcome;
+  };
+
+  const dispatch = (request: OperationRequest): Promise<Result<OperationResult, DispatchError>> => {
+    const contract = contracts.find(request.kind, request.type, request.version);
+    const handler = contract && handlers.get(`${contract.kind}:${contract.key}`);
+    if (contract === undefined || handler === undefined) {
+      return Promise.resolve(
+        Result.err(
+          new UnknownOperation({
+            kind: request.kind,
+            type: request.type,
+            version: request.version,
+            message: `No ${request.kind} ${request.type} at version ${request.version}`,
+          }),
+        ),
+      );
+    }
+    const operation = `${contract.kind} ${contract.key}`;
+    return telemetry.span(
+      operation,
+      {
+        kind: "internal",
+        attributes: {
+          "projected.service": contracts.name,
+          "projected.operation.kind": contract.kind,
+          "projected.operation.type": contract.type,
+          "projected.operation.version": contract.version,
+          "projected.message_id": request.metadata?.messageId,
+          "projected.correlation_id": request.metadata?.correlationId,
+          "enduser.id": request.metadata?.principal?.id,
+        },
+      },
+      async (span) => {
+        const outcome = await (async (): Promise<Result<OperationResult, DispatchError>> => {
+          // Access before validation: callers who may not run an operation learn nothing about its input.
+          const denied = checkAccess(operation, contracts.accessOf(contract), request.metadata?.principal);
+          if (denied !== undefined) return Result.err(denied);
+
+          const input = contract.input.safeParse(request.input);
+          if (!input.success) {
+            return Result.err(
+              new InvalidInput({ issues: toValidationIssues(input.error.issues), message: `Invalid input for ${operation}` }),
+            );
+          }
+          const metadata = completeMetadata(request.metadata);
+          const key = metadata.idempotencyKey;
+          if (contract.kind === "command" && key !== undefined && options.idempotency !== undefined) {
+            return runOnce(options.idempotency, key, contract, input.data, metadata, span);
+          }
+          return run(contract, handler, input.data, metadata);
+        })();
+
+        outcome.match({
+          ok: (result) =>
+            span.setAttributes({
+              "projected.outcome": result.status,
+              "projected.error.type": result.status === "error" ? result.error.type : undefined,
+            }),
+          err: (error) => {
+            span.setAttributes({ "projected.outcome": "failed", "projected.error.type": error._tag });
+            span.fail(error.message);
+          },
+        });
+        return outcome;
+      },
+    );
+  };
+
   return {
     contracts,
+    telemetry,
     dispatch,
     execute: async (contract, input, metadata) => {
       const { kind, type, version } = contract as AnyOperationContract;

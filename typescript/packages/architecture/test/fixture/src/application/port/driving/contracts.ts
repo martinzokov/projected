@@ -8,4 +8,4 @@ export const Increment = defineCommand({
   errors: [CounterAtLimit],
 });
 
-export const counterContracts = defineContracts({ name: "counters", commands: [Increment] });
+export const counterContracts = defineContracts({ name: "counters", access: "authenticated", commands: [Increment] });

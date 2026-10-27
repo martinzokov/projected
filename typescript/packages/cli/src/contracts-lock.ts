@@ -1,4 +1,4 @@
-import type { AnyContracts, AnyOperationContract } from "@projected/application";
+import type { Access, AnyContracts, AnyOperationContract } from "@projected/application";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
@@ -8,8 +8,11 @@ import { z } from "zod";
  * The lock file records a fingerprint per operation; CI compares it with the code.
  */
 
+/** Version 2 added `access` to fingerprints. */
+export const LOCKFILE_VERSION = 2;
+
 export interface ContractsLock {
-  readonly lockfileVersion: 1;
+  readonly lockfileVersion: number;
   readonly service: string;
   /** `"command enlist-student@1"` → `"sha256-…"` */
   readonly operations: Readonly<Record<string, string>>;
@@ -34,9 +37,10 @@ const schemaOf = (schema: z.ZodType, io: "input" | "output") =>
 
 export const operationKey = (contract: AnyOperationContract) => `${contract.kind} ${contract.key}`;
 
-/** The fingerprint of everything a client depends on: input, output and the declared errors. */
-export function fingerprint(contract: AnyOperationContract): string {
+/** The fingerprint of everything a client depends on: input, output, declared errors and who may call it. */
+export function fingerprint(contract: AnyOperationContract, access: Access): string {
   const shape = {
+    access,
     input: schemaOf(contract.input, "input"),
     output: schemaOf(contract.output, "output"),
     errors: contract.errors
@@ -49,10 +53,12 @@ export function fingerprint(contract: AnyOperationContract): string {
 export function lockOf(contracts: AnyContracts): ContractsLock {
   const operations = [...contracts.commands, ...contracts.queries] as AnyOperationContract[];
   return {
-    lockfileVersion: 1,
+    lockfileVersion: LOCKFILE_VERSION,
     service: contracts.name,
     operations: Object.fromEntries(
-      operations.map((contract) => [operationKey(contract), fingerprint(contract)] as const).sort(([a], [b]) => a.localeCompare(b)),
+      operations
+        .map((contract) => [operationKey(contract), fingerprint(contract, contracts.accessOf(contract))] as const)
+        .sort(([a], [b]) => a.localeCompare(b)),
     ),
   };
 }
@@ -96,7 +102,7 @@ export function updateLock(
     for (const key of Object.keys(operations)) if (!(key in current.operations)) delete operations[key];
   }
   return {
-    lockfileVersion: 1,
+    lockfileVersion: LOCKFILE_VERSION,
     service: contracts.name,
     operations: Object.fromEntries(Object.entries(operations).sort(([a], [b]) => a.localeCompare(b))),
   };

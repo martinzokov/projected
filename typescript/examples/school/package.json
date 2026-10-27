@@ -13,14 +13,24 @@
   },
   "dependencies": {
     "@projected/application": "workspace:*",
+    "@projected/auth-better-auth": "workspace:*",
     "@projected/domain": "workspace:*",
-    "@projected/event-store-memory": "workspace:*",
     "@projected/http": "workspace:*",
-    "@projected/runtime": "workspace:*"
+    "@projected/kafka": "workspace:*",
+    "@projected/messaging": "workspace:*",
+    "@projected/nats": "workspace:*",
+    "@projected/opentelemetry": "workspace:*",
+    "@projected/runtime": "workspace:*",
+    "@projected/store-memory": "workspace:*",
+    "@projected/store-postgres": "workspace:*",
+    "@opentelemetry/api": "^1.10.0",
+    "better-auth": "^1.7.14",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@projected/architecture": "workspace:*",
     "@projected/cli": "workspace:*",
-    "@projected/testing": "workspace:*"
+    "@projected/testing": "workspace:*",
+    "@types/pg": "^8.23.1"
   }
 }

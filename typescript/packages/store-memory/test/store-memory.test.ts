@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { eventStoreConformance, fixedClock, sequentialIds } from "@projected/testing";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
+import {
+  checkpointStoreConformance,
+  documentStoreConformance,
+  eventStoreConformance,
+  fixedClock,
+  idempotencyStoreConformance,
+  sequentialIds,
+} from "@projected/testing";
+import {
+  inMemoryCheckpointStore,
+  inMemoryDocumentStore,
+  inMemoryEventStore,
+  inMemoryIdempotencyStore,
+} from "@projected/store-memory";
 
 eventStoreConformance("in-memory", () => inMemoryEventStore());
+checkpointStoreConformance("in-memory", () => inMemoryCheckpointStore());
+idempotencyStoreConformance("in-memory", () => inMemoryIdempotencyStore());
+documentStoreConformance("in-memory", () => inMemoryDocumentStore());
 
 describe("inMemoryEventStore", () => {
   it("stamps events with the injected clock and ids", async () => {

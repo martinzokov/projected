@@ -13,9 +13,9 @@ import {
   z,
   type CommandHandler,
 } from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
 import { commandQueue, consumeCommands, consumeEvents, eventRelay, inMemoryTransport } from "@projected/messaging";
-import { sequentialIds } from "@projected/testing";
+import { messageTransportConformance, sequentialIds } from "@projected/testing";
 
 class AlreadyShipped extends defineError("AlreadyShipped", { schema: z.object({ orderId: z.string() }) }) {}
 const OrderShipped = defineEvent("OrderShipped", { schema: z.object({ orderId: z.string() }) });
@@ -31,7 +31,7 @@ const ShipOrder = defineCommand({
   output: z.object({}),
   errors: [AlreadyShipped],
 });
-const contracts = defineContracts({ name: "shipping", commands: [ShipOrder] });
+const contracts = defineContracts({ name: "shipping", access: "public", commands: [ShipOrder] });
 
 function shipping(options: { failFirst?: boolean } = {}) {
   const store = inMemoryEventStore();
@@ -65,7 +65,7 @@ describe("queued commands", () => {
   it("run through the application, with their outcome observable", async () => {
     const { app, store, transport } = shipping();
     const outcomes: string[] = [];
-    consumeCommands(app, transport, { topic: "shipping.commands", onOutcome: (_, result) => outcomes.push(result.status) });
+    await consumeCommands(app, transport, { topic: "shipping.commands", onOutcome: (_, result) => outcomes.push(result.status) });
     const queue = commandQueue(contracts, transport, { topic: "shipping.commands", ids: sequentialIds("cmd") });
 
     await queue.enqueue(ShipOrder, { orderId: "o-1" });
@@ -78,7 +78,7 @@ describe("queued commands", () => {
 
   it("carry correlation from the sending context", async () => {
     const { app, store, transport } = shipping();
-    consumeCommands(app, transport, { topic: "shipping.commands" });
+    await consumeCommands(app, transport, { topic: "shipping.commands" });
     const queue = commandQueue(contracts, transport, { topic: "shipping.commands", ids: sequentialIds("cmd") });
     const context = { metadata: { messageId: "web-1", correlationId: "flow-1", causationId: undefined, idempotencyKey: undefined } };
 
@@ -90,7 +90,7 @@ describe("queued commands", () => {
 
   it("are retried after an infrastructure error", async () => {
     const { app, store, transport } = shipping({ failFirst: true });
-    consumeCommands(app, transport, { topic: "shipping.commands" });
+    await consumeCommands(app, transport, { topic: "shipping.commands" });
 
     await commandQueue(contracts, transport, { topic: "shipping.commands", ids: sequentialIds() }).enqueue(ShipOrder, {
       orderId: "o-1",
@@ -103,7 +103,7 @@ describe("queued commands", () => {
 
   it("are dead-lettered when they can never succeed", async () => {
     const { app, transport } = shipping();
-    consumeCommands(app, transport, { topic: "shipping.commands" });
+    await consumeCommands(app, transport, { topic: "shipping.commands" });
 
     await transport.publish("shipping.commands", { id: "x", body: { kind: "command", type: "ship-order", version: 9, data: {}, metadata: { messageId: "x", correlationId: "x" } } });
     await transport.publish("shipping.commands", { id: "y", body: "garbage" });
@@ -136,7 +136,7 @@ describe("event relay", () => {
         },
       },
     });
-    consumeEvents(notifications, transport, { topic: "shipping.events" });
+    await consumeEvents(notifications, transport, { topic: "shipping.events" });
 
     await app.execute(ShipOrder, { orderId: "o-1" });
     await transport.drain();
@@ -144,4 +144,13 @@ describe("event relay", () => {
     expect(transport.published.map((m) => (m.body as { type: string }).type)).toEqual(["OrderShipped"]);
     expect(notified).toEqual(["o-1"]);
   });
+});
+
+messageTransportConformance("in-memory", {
+  create: () => {
+    const transport = inMemoryTransport({ maxAttempts: 3 });
+    return { transport, drain: () => transport.drain() };
+  },
+  maxAttempts: 3,
+  durable: false,
 });

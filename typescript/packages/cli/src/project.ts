@@ -18,6 +18,8 @@ export interface ProjectConfig {
   readonly applicationPackages?: readonly string[];
   /** Extra npm packages the domain layer may import. */
   readonly domainPackages?: readonly string[];
+  /** OpenAPI security schemes for the generated document, e.g. better-auth's cookie and bearer. */
+  readonly securitySchemes?: Readonly<Record<string, unknown>>;
 }
 
 export interface Project {

@@ -45,6 +45,7 @@ const Flaky = defineQuery({ type: "flaky", input: z.object({}), output: z.object
 
 const library = defineContracts({
   name: "library",
+  access: "public",
   description: "Lends books.",
   commands: [BorrowBook, Explode],
   queries: [AvailableBooks, Flaky],
@@ -263,7 +264,7 @@ describe("openApiDocument", () => {
     const NodeSchema: z.ZodType<Node> = z.lazy(() => z.object({ name: z.string(), children: z.array(NodeSchema) }));
     const Tree = defineQuery({ type: "tree", input: z.object({}), output: z.object({ root: NodeSchema }) });
 
-    const document = openApiDocument(defineContracts({ name: "trees", queries: [Tree] }));
+    const document = openApiDocument(defineContracts({ name: "trees", access: "public", queries: [Tree] }));
     const result = await new Validator().validate(structuredClone(document) as unknown as Spec);
 
     expect(result.valid).toBe(true);

@@ -1,0 +1,11 @@
+{
+  "securitySchemes": {
+    "betterAuthSession": {
+      "type": "apiKey",
+      "in": "cookie",
+      "name": "better-auth.session_token",
+      "description": "Session cookie set by better-auth's sign-in endpoints."
+    },
+    "bearer": { "type": "http", "scheme": "bearer", "description": "Session token from better-auth's bearer plugin." }
+  }
+}

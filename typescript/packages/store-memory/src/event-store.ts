@@ -2,7 +2,6 @@ import {
   ConcurrencyConflict,
   Result,
   type AppendResult,
-  type CheckpointStore,
   type Clock,
   type DependencyUnavailable,
   type EventStore,
@@ -85,17 +84,5 @@ export function inMemoryEventStore(options: InMemoryEventStoreOptions = {}): InM
     },
 
     readAll: async ({ after, limit }) => Result.ok(log.filter((e) => e.globalPosition > after).slice(0, limit)),
-  };
-}
-
-/** A {@link CheckpointStore} that keeps positions in memory. */
-export function inMemoryCheckpointStore(): CheckpointStore {
-  const positions = new Map<string, number>();
-  return {
-    load: async (name) => Result.ok(positions.get(name) ?? 0),
-    save: async (name, position) => {
-      positions.set(name, position);
-      return Result.ok(undefined);
-    },
   };
 }

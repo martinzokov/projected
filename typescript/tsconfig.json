@@ -17,10 +17,10 @@
       "path": "packages/testing"
     },
     {
-      "path": "packages/event-store-memory"
+      "path": "packages/store-memory"
     },
     {
-      "path": "packages/event-store-memory/test"
+      "path": "packages/store-memory/test"
     },
     {
       "path": "packages/http"
@@ -51,6 +51,36 @@
     },
     {
       "path": "packages/cli/test"
+    },
+    {
+      "path": "packages/store-postgres"
+    },
+    {
+      "path": "packages/store-postgres/test"
+    },
+    {
+      "path": "packages/opentelemetry"
+    },
+    {
+      "path": "packages/opentelemetry/test"
+    },
+    {
+      "path": "packages/auth-better-auth"
+    },
+    {
+      "path": "packages/auth-better-auth/test"
+    },
+    {
+      "path": "packages/kafka"
+    },
+    {
+      "path": "packages/kafka/test"
+    },
+    {
+      "path": "packages/nats"
+    },
+    {
+      "path": "packages/nats/test"
     },
     {
       "path": "examples/school"

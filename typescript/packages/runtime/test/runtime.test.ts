@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApplication, defineContracts, defineEvent, defineEventHandler, Result, z } from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
 import { randomIds, startPolling, systemClock } from "@projected/runtime";
 import { sequentialIds } from "@projected/testing";
 
@@ -30,7 +30,7 @@ describe("runtime", () => {
         },
       },
     });
-    const app = createApplication(defineContracts({ name: "pings" }), {
+    const app = createApplication(defineContracts({ name: "pings", access: "public" }), {
       ids: sequentialIds(),
       eventHandling: { handlers: [handler], store, checkpoints: inMemoryCheckpointStore(), inline: false },
     });

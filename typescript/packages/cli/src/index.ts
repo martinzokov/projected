@@ -1,6 +1,7 @@
 export { run } from "./cli.js";
 export { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
 export {
+  LOCKFILE_VERSION,
   compareLock,
   fingerprint,
   lockOf,

@@ -3,7 +3,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 import { createApplication, defineCommand, defineContracts, defineEvent, z } from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
 import { commandQueue, eventRelay, inMemoryTransport } from "@projected/messaging";
 import { sequentialIds } from "@projected/testing";
 
@@ -27,7 +27,7 @@ describe("messaging binding conforms to spec/wire.schema.json", () => {
     const transport = inMemoryTransport();
     const context = { metadata: { messageId: "m-1", correlationId: "c-1", causationId: undefined, idempotencyKey: undefined } };
 
-    await commandQueue(defineContracts({ name: "pings", commands: [Ping] }), transport, { topic: "t", ids: sequentialIds() }).enqueue(
+    await commandQueue(defineContracts({ name: "pings", access: "public", commands: [Ping] }), transport, { topic: "t", ids: sequentialIds() }).enqueue(
       Ping,
       { n: 1 },
       context,
@@ -39,7 +39,7 @@ describe("messaging binding conforms to spec/wire.schema.json", () => {
   it("for relayed events", async () => {
     const transport = inMemoryTransport();
     const store = inMemoryEventStore();
-    const app = createApplication(defineContracts({ name: "pings" }), {
+    const app = createApplication(defineContracts({ name: "pings", access: "public" }), {
       ids: sequentialIds(),
       eventHandling: { handlers: [eventRelay(transport, { name: "relay", topic: "events" })], store, checkpoints: inMemoryCheckpointStore() },
     });

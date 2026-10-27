@@ -3,8 +3,25 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "../.tsbuild/test",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["**/*.ts"],
-  "references": [{ "path": ".." }, { "path": "../../application" }, { "path": "../../event-store-memory" }, { "path": "../../testing" }]
+  "include": [
+    "**/*.ts"
+  ],
+  "references": [
+    {
+      "path": ".."
+    },
+    {
+      "path": "../../application"
+    },
+    {
+      "path": "../../store-memory"
+    },
+    {
+      "path": "../../testing"
+    }
+  ]
 }

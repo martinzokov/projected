@@ -1,0 +1,24 @@
+{
+  "name": "@projected/nats",
+  "version": "0.1.0",
+  "description": "NATS JetStream transport for projected's messaging: a lightweight, single-binary alternative to Kafka with native acknowledgements and redelivery.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@nats-io/jetstream": "^3.4.0",
+    "@nats-io/transport-node": "^3.4.0",
+    "@projected/application": "workspace:*",
+    "@projected/messaging": "workspace:*"
+  },
+  "devDependencies": {
+    "@projected/testing": "workspace:*"
+  }
+}

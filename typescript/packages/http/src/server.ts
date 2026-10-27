@@ -1,4 +1,12 @@
-import type { AnyContracts, Application, Metadata, OperationKind, OperationResult } from "@projected/application";
+import type {
+  AnyContracts,
+  Application,
+  Authenticator,
+  Metadata,
+  OperationKind,
+  OperationResult,
+  Principal,
+} from "@projected/application";
 import { openApiDocument, type OpenApiOptions } from "./openapi.js";
 import { HEADERS, PLURAL, PROBLEM_TYPES, problem, problemForDispatchError, type Problem } from "./protocol.js";
 
@@ -14,6 +22,18 @@ export interface HttpHandlerOptions {
   readonly openApi?: boolean | OpenApiOptions;
   /** Generates message ids for requests without an `X-Message-Id` header. */
   readonly messageIds?: () => string;
+  /**
+   * Establishes the principal of each request (e.g. `betterAuthAuthenticator(auth)`). Without
+   * one, every request is anonymous and only `access: "public"` operations can run.
+   */
+  readonly authenticator?: Authenticator;
+  /** `WWW-Authenticate` value sent with 401 responses. Defaults to `Bearer`. */
+  readonly authenticationChallenge?: string;
+  /**
+   * Other handlers to serve under path prefixes, checked first — e.g. an auth provider's own
+   * sign-in routes: `{ "/api/auth": auth.handler }`.
+   */
+  readonly routes?: Readonly<Record<string, FetchHandler>>;
 }
 
 /** One entry of a batch. A failed entry did not reach a business outcome. */
@@ -45,7 +65,12 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
   const openApiOptions = typeof options.openApi === "object" ? options.openApi : {};
   const document = options.openApi === false ? undefined : openApiDocument(app.contracts, openApiOptions);
 
-  const metadataFrom = (request: Request): Metadata => {
+  const telemetry = app.telemetry;
+  const mounts = Object.entries(options.routes ?? {})
+    .map(([prefix, handler]) => [prefix.replace(/\/+$/, ""), handler] as const)
+    .sort(([a], [b]) => b.length - a.length);
+
+  const metadataFrom = (request: Request, principal: Principal | undefined): Metadata => {
     const header = (name: string) => request.headers.get(name) ?? undefined;
     const messageId = header(HEADERS.messageId) ?? newId();
     return {
@@ -53,6 +78,7 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
       correlationId: header(HEADERS.correlationId) ?? messageId,
       causationId: header(HEADERS.causationId),
       idempotencyKey: header(HEADERS.idempotencyKey),
+      ...(principal === undefined ? {} : { principal }),
     };
   };
 
@@ -81,26 +107,24 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
   const runOne = async (kind: OperationKind, type: string, version: number, input: unknown, metadata: Metadata) =>
     app.dispatch({ kind, type, version, input, metadata });
 
-  return async (request) => {
-    const url = new URL(request.url);
-    if (basePath !== "" && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) {
-      return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
-    }
-    const path = url.pathname.slice(basePath.length) || "/";
+  const challenge = options.authenticationChallenge ?? "Bearer";
+  const respondToProblem = (response: Problem, headers: Record<string, string>): Response => {
+    const extra: Record<string, string> =
+      response.status === 503 ? { "retry-after": "1" } : response.status === 401 ? { "www-authenticate": challenge } : {};
+    return json(response, response.status, { ...headers, ...extra });
+  };
 
-    if (path === "/health") {
-      return request.method === "GET" ? json({ status: "ok" }, 200) : methodNotAllowed("GET");
+  const handleOperation = async (request: Request, single: RegExpExecArray | null, batch: RegExpExecArray | null) => {
+    const headers = Object.fromEntries([...request.headers].map(([name, value]) => [name.toLowerCase(), value]));
+    let principal: Principal | undefined;
+    if (options.authenticator !== undefined) {
+      const authenticated = await options.authenticator.authenticate({ headers });
+      if (authenticated.isErr()) {
+        return respondToProblem(problem(PROBLEM_TYPES.dependencyUnavailable, "Service temporarily unavailable", 503), {});
+      }
+      principal = authenticated.value;
     }
-    if (path === "/openapi.json" && document !== undefined) {
-      return request.method === "GET" ? json(document, 200) : methodNotAllowed("GET");
-    }
-
-    const single = ROUTE.exec(path);
-    const batch = single === null ? BATCH.exec(path) : null;
-    if (single === null && batch === null) return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
-    if (request.method !== "POST") return methodNotAllowed("POST");
-
-    const metadata = metadataFrom(request);
+    const metadata = metadataFrom(request, principal);
     const body = await readJson(request);
     if (!body.ok) return json(body.problem, body.problem.status, traceHeaders(metadata));
 
@@ -109,11 +133,7 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
       const outcome = await runOne(KIND[plural] as OperationKind, type, Number(version), body.body, metadata);
       return outcome.match({
         ok: (result) => json(result, 200, traceHeaders(metadata)),
-        err: (error) => {
-          const response = problemForDispatchError(error);
-          const retry: Record<string, string> = response.status === 503 ? { "retry-after": "1" } : {};
-          return json(response, response.status, { ...traceHeaders(metadata), ...retry });
-        },
+        err: (error) => respondToProblem(problemForDispatchError(error), traceHeaders(metadata)),
       });
     }
 
@@ -144,7 +164,12 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
         });
         continue;
       }
-      const itemMetadata: Metadata = { ...metadata, messageId: `${metadata.messageId}/${index}`, idempotencyKey: undefined };
+      // A batch's Idempotency-Key covers every item: retrying the batch replays each item's outcome.
+      const itemMetadata: Metadata = {
+        ...metadata,
+        messageId: `${metadata.messageId}/${index}`,
+        idempotencyKey: metadata.idempotencyKey === undefined ? undefined : `${metadata.idempotencyKey}/${index}`,
+      };
       const outcome = await runOne(kind, type, version, data ?? {}, itemMetadata);
       results.push(
         outcome.match<BatchItemResult>({
@@ -154,6 +179,44 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
       );
     }
     return json({ results }, 200, traceHeaders(metadata));
+  };
+
+  return async (request) => {
+    const url = new URL(request.url);
+    for (const [prefix, handler] of mounts) {
+      if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) return handler(request);
+    }
+    if (basePath !== "" && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) {
+      return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
+    }
+    const path = url.pathname.slice(basePath.length) || "/";
+
+    if (path === "/health") {
+      return request.method === "GET" ? json({ status: "ok" }, 200) : methodNotAllowed("GET");
+    }
+    if (path === "/openapi.json" && document !== undefined) {
+      return request.method === "GET" ? json(document, 200) : methodNotAllowed("GET");
+    }
+
+    const single = ROUTE.exec(path);
+    const batch = single === null ? BATCH.exec(path) : null;
+    if (single === null && batch === null) return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
+    if (request.method !== "POST") return methodNotAllowed("POST");
+
+    const carrier = Object.fromEntries([...request.headers].map(([name, value]) => [name.toLowerCase(), value]));
+    const route = single === null ? `/${batch?.[1] ?? ""}` : `/${single[1] ?? ""}/{type}/version/{version}`;
+    return telemetry.continueFrom(carrier, () =>
+      telemetry.span(
+        `POST ${route}`,
+        { kind: "server", attributes: { "http.request.method": "POST", "http.route": route, "url.path": url.pathname } },
+        async (span) => {
+          const response = await handleOperation(request, single, batch);
+          span.setAttributes({ "http.response.status_code": response.status });
+          if (response.status >= 500) span.fail(`HTTP ${response.status}`);
+          return response;
+        },
+      ),
+    );
   };
 }
 

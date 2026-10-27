@@ -11,9 +11,13 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
-    "@projected/application": "workspace:*"
+    "@projected/application": "workspace:*",
+    "@projected/messaging": "workspace:*"
   },
   "peerDependencies": {
     "vitest": ">=3"

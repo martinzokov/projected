@@ -1,6 +1,7 @@
 import { Result, panic, type AnyAggregate, type Decision, type EventOf, type StateOf } from "@projected/domain";
 import { ConcurrencyConflict, type DependencyUnavailable } from "./errors.js";
-import type { EventStore, ExecutionContext, NewEvent, RecordedEvent } from "./ports.js";
+import type { EventMetadata, EventStore, ExecutionContext, NewEvent, RecordedEvent } from "./ports.js";
+import { noTelemetry, type Telemetry } from "./telemetry.js";
 
 /** An aggregate's state as loaded from its stream. */
 export interface LoadedAggregate<A extends AnyAggregate> {
@@ -34,6 +35,23 @@ export interface AggregateRepository<A extends AnyAggregate> {
 export interface AggregateRepositoryOptions {
   /** How many times to run the load–decide–append cycle before giving up on conflicts. Defaults to 3. */
   readonly maxAttempts?: number;
+  /** Records a span per load and per decision. Defaults to none. */
+  readonly telemetry?: Telemetry;
+}
+
+/**
+ * What every appended event records about its cause: the flow it belongs to, the message that
+ * caused it, who sent that message, and the trace to continue in whatever reacts to it.
+ */
+export function eventMetadataFrom(context: ExecutionContext | undefined): EventMetadata {
+  if (context === undefined) return {};
+  const { correlationId, messageId, principal, trace } = context.metadata;
+  return {
+    correlationId,
+    causationId: messageId,
+    ...(principal === undefined ? {} : { principalId: principal.id }),
+    ...(trace === undefined ? {} : { trace }),
+  };
 }
 
 /** An {@link AggregateRepository} over any {@link EventStore}. */
@@ -43,6 +61,7 @@ export function aggregateRepository<A extends AnyAggregate>(
   options: AggregateRepositoryOptions = {},
 ): AggregateRepository<A> {
   const maxAttempts = options.maxAttempts ?? 3;
+  const telemetry = options.telemetry ?? noTelemetry;
 
   const decodeAll = (events: readonly RecordedEvent[]): EventOf<A>[] =>
     events.map((recorded) =>
@@ -55,10 +74,14 @@ export function aggregateRepository<A extends AnyAggregate>(
         }),
     );
 
-  const load = async (id: string): Promise<Result<LoadedAggregate<A>, DependencyUnavailable>> => {
-    const slice = await store.readStream(aggregate.streamName(id));
-    return slice.map(({ version, events }) => ({ id, version, state: aggregate.fold(decodeAll(events)) }));
-  };
+  const load = (id: string): Promise<Result<LoadedAggregate<A>, DependencyUnavailable>> =>
+    telemetry.span(`load ${aggregate.name}`, { attributes: { "projected.stream": aggregate.streamName(id) } }, async (span) => {
+      const slice = await store.readStream(aggregate.streamName(id));
+      return slice.map(({ version, events }) => {
+        span.setAttributes({ "projected.stream.version": version });
+        return { id, version, state: aggregate.fold(decodeAll(events)) };
+      });
+    });
 
   const attempt = async <E>(
     id: string,
@@ -70,13 +93,10 @@ export function aggregateRepository<A extends AnyAggregate>(
       const events = yield* decide(loaded.state);
       if (events.length === 0) return Result.ok({ ...loaded, events });
 
-      const metadata = context && {
-        correlationId: context.metadata.correlationId,
-        causationId: context.metadata.messageId,
-      };
+      const metadata = eventMetadataFrom(context);
       const newEvents: NewEvent[] = events.map((event) => ({
         ...aggregate.encode(event),
-        ...(metadata === undefined ? {} : { metadata }),
+        ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
       }));
       const appended = yield* Result.await(
         store.appendToStream(aggregate.streamName(id), newEvents, { expectedVersion: loaded.version }),
@@ -87,12 +107,19 @@ export function aggregateRepository<A extends AnyAggregate>(
   return {
     aggregate,
     load,
-    execute: async (id, decide, context) => {
-      let outcome = await attempt(id, decide, context);
-      for (let tries = 1; tries < maxAttempts && outcome.isErr() && ConcurrencyConflict.is(outcome.error); tries++) {
-        outcome = await attempt(id, decide, context);
-      }
-      return outcome;
-    },
+    execute: (id, decide, context) =>
+      telemetry.span(`execute ${aggregate.name}`, { attributes: { "projected.stream": aggregate.streamName(id) } }, async (span) => {
+        let tries = 1;
+        let outcome = await attempt(id, decide, context);
+        for (; tries < maxAttempts && outcome.isErr() && ConcurrencyConflict.is(outcome.error); tries++) {
+          outcome = await attempt(id, decide, context);
+        }
+        span.setAttributes({
+          "projected.attempts": tries,
+          "projected.events": outcome.isOk() ? outcome.value.events.length : 0,
+        });
+        if (outcome.isErr() && ConcurrencyConflict.is(outcome.error)) span.fail(outcome.error.message);
+        return outcome;
+      }),
   };
 }

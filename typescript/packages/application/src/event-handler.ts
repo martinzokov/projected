@@ -1,6 +1,7 @@
 import { Result, panic, type AnyEventDefinition, type DomainEvent, type z } from "@projected/domain";
 import type { InfrastructureError } from "./errors.js";
 import type { CheckpointStore, EventStore, ExecutionContext, RecordedEvent } from "./ports.js";
+import { noTelemetry, traceCarrier, type Telemetry } from "./telemetry.js";
 
 const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -85,15 +86,7 @@ export function defineEventHandler<const Events extends readonly AnyEventDefinit
         ok: (decoded) => decoded,
         err: (error) => panic(`${options.name}: ${recorded.stream}@${recorded.streamVersion}: ${error.message}`, error),
       });
-      const correlationId = typeof recorded.metadata.correlationId === "string" ? recorded.metadata.correlationId : undefined;
-      const context: ExecutionContext = {
-        metadata: {
-          messageId: recorded.eventId,
-          correlationId: correlationId ?? recorded.eventId,
-          causationId: recorded.eventId,
-          idempotencyKey: recorded.eventId,
-        },
-      };
+      const context: ExecutionContext = { metadata: eventContext(recorded) };
       return fn(
         {
           ...event,
@@ -119,6 +112,52 @@ export interface CatchUpReport {
 
 export interface CatchUpOptions {
   readonly batchSize?: number;
+  /** Each handled event gets a span, continuing the trace that produced the event. */
+  readonly telemetry?: Telemetry;
+}
+
+/**
+ * The context a reaction to `recorded` runs in: correlated with the flow that produced it,
+ * caused by it, and keyed by its id so that anything it sends is idempotent across redeliveries.
+ */
+function eventContext(recorded: RecordedEvent): ExecutionContext["metadata"] {
+  const { correlationId, trace } = recorded.metadata;
+  const carrier = traceCarrier(typeof trace === "object" && trace !== null ? (trace as Record<string, unknown>) : undefined);
+  return {
+    messageId: recorded.eventId,
+    correlationId: typeof correlationId === "string" ? correlationId : recorded.eventId,
+    causationId: recorded.eventId,
+    idempotencyKey: recorded.eventId,
+    ...(carrier === undefined ? {} : { trace: carrier }),
+  };
+}
+
+/** Run one handler on one event inside a span that continues the event's trace. */
+export function handleTraced(
+  handler: EventHandler,
+  recorded: RecordedEvent,
+  telemetry: Telemetry,
+): Promise<Result<void, InfrastructureError>> {
+  return telemetry.continueFrom(eventContext(recorded).trace, () =>
+    telemetry.span(
+      `${handler.name} ${recorded.type}`,
+      {
+        kind: "consumer",
+        attributes: {
+          "projected.event_handler": handler.name,
+          "projected.event.type": recorded.type,
+          "projected.event.id": recorded.eventId,
+          "projected.stream": recorded.stream,
+          "projected.global_position": recorded.globalPosition,
+        },
+      },
+      async (span) => {
+        const outcome = await handler.handle(recorded);
+        if (outcome.isErr()) span.fail(outcome.error.message);
+        return outcome;
+      },
+    ),
+  );
 }
 
 /**
@@ -132,6 +171,7 @@ export async function catchUp(
   options: CatchUpOptions = {},
 ): Promise<Result<CatchUpReport, InfrastructureError>> {
   const batchSize = options.batchSize ?? 100;
+  const telemetry = options.telemetry ?? noTelemetry;
   return Result.gen(async function* () {
     const start = yield* Result.await(checkpoints.load(handler.name));
     let position = start;
@@ -140,7 +180,7 @@ export async function catchUp(
       const batch = yield* Result.await(store.readAll({ after: position, limit: batchSize }));
       for (const recorded of batch) {
         if (handler.handles(recorded.type)) {
-          const outcome = await handler.handle(recorded);
+          const outcome = await handleTraced(handler, recorded, telemetry);
           if (outcome.isErr()) {
             if (position !== start) yield* Result.await(checkpoints.save(handler.name, position));
             return Result.err(outcome.error);

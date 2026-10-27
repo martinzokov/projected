@@ -3,6 +3,7 @@
  * `src/infrastructure/**`.
  */
 export {
+  deadLetterTopic,
   inMemoryTransport,
   type Disposition,
   type InMemoryTransport,
@@ -10,6 +11,7 @@ export {
   type Message,
   type MessageTransport,
   type OutgoingMessage,
+  type SubscribeOptions,
   type Subscription,
 } from "./transport.js";
 export { CommandMessage, commandQueue, consumeCommands, type CommandQueueOptions, type ConsumeCommandsOptions } from "./commands.js";

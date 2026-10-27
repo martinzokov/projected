@@ -1,0 +1,26 @@
+{
+  "name": "@projected/auth-better-auth",
+  "version": "0.1.0",
+  "description": "better-auth integration for projected: an Authenticator that turns better-auth sessions into principals, its sign-in routes, and OpenAPI security schemes.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@projected/application": "workspace:*"
+  },
+  "peerDependencies": {
+    "better-auth": "^1.7.0"
+  },
+  "devDependencies": {
+    "@projected/http": "workspace:*",
+    "@projected/testing": "workspace:*",
+    "better-auth": "^1.7.14"
+  }
+}

@@ -12,6 +12,7 @@ import {
   type InfrastructureError,
   type OutputOf,
   type RemoteService,
+  type Telemetry,
 } from "@projected/application";
 import type { z } from "zod";
 import { HEADERS, operationPath } from "./protocol.js";
@@ -27,6 +28,8 @@ export interface HttpServiceOptions {
   readonly headers?: () => Record<string, string>;
   /** Per-request timeout. Defaults to 10 seconds. */
   readonly timeoutMs?: number;
+  /** Records a client span per call and sends the trace context (`traceparent`) along. */
+  readonly telemetry?: Telemetry;
 }
 
 /**
@@ -50,16 +53,40 @@ export function httpService<C extends AnyContracts>(contracts: C, options: HttpS
   const failure = (message: string, cause?: unknown) =>
     new DependencyFailure({ dependency, message: `${dependency}: ${message}`, cause });
 
-  const execute = async <Op extends AnyOperationContract>(
+  const execute = <Op extends AnyOperationContract>(
     contract: Op,
     input: unknown,
     context?: ExecutionContext,
+  ): Promise<Result<OutputOf<Op>, ErrorOf<Op> | InfrastructureError>> => {
+    const telemetry = options.telemetry;
+    if (telemetry === undefined) return send(contract, input, context, {});
+    return telemetry.span(
+      `${contract.kind} ${dependency}/${contract.key}`,
+      { kind: "client", attributes: { "projected.remote_service": dependency, "projected.operation.type": contract.type } },
+      async (span) => {
+        const carrier: Record<string, string> = {};
+        telemetry.inject(carrier);
+        const outcome = await send(contract, input, context, carrier);
+        if (outcome.isErr() && (DependencyFailure.is(outcome.error) || DependencyUnavailable.is(outcome.error))) {
+          span.fail(outcome.error.message);
+        }
+        return outcome;
+      },
+    );
+  };
+
+  const send = async <Op extends AnyOperationContract>(
+    contract: Op,
+    input: unknown,
+    context: ExecutionContext | undefined,
+    trace: Record<string, string>,
   ): Promise<Result<OutputOf<Op>, ErrorOf<Op> | InfrastructureError>> => {
     const metadata = propagate(context);
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
       ...options.headers?.(),
+      ...trace,
       ...(metadata.correlationId === undefined ? {} : { [HEADERS.correlationId]: metadata.correlationId }),
       ...(metadata.causationId === undefined ? {} : { [HEADERS.causationId]: metadata.causationId }),
     };
@@ -77,7 +104,8 @@ export function httpService<C extends AnyContracts>(contracts: C, options: HttpS
     const response = sent.value;
 
     if (response.status !== 200) {
-      // 409 means the remote raced another change; 429/503/504 mean "later". All retryable.
+      // 409 means the remote raced another change or is still running this request; 429/503/504
+      // mean "later". All retryable. Everything else (401/403 included) needs a fix on our side.
       if ([409, 429, 503, 504].includes(response.status)) return Result.err(unavailable(`HTTP ${response.status}`));
       return Result.err(failure(`HTTP ${response.status}: ${await response.text().catch(() => "")}`));
     }
@@ -145,6 +173,8 @@ export interface HttpClientOptions {
   readonly fetch?: Fetch;
   readonly headers?: () => Record<string, string>;
   readonly timeoutMs?: number;
+  /** Records a client span per request and sends the trace context along. */
+  readonly telemetry?: Telemetry;
 }
 
 /**
@@ -165,8 +195,28 @@ export function httpClient(options: HttpClientOptions): HttpClient {
   const timeoutMs = options.timeoutMs ?? 10_000;
   const { dependency } = options;
 
-  return {
-    request: async (request) => {
+  const traced: HttpClient["request"] = (request) => {
+    const telemetry = options.telemetry;
+    if (telemetry === undefined) return send(request, {});
+    return telemetry.span(
+      `${request.method} ${dependency}`,
+      { kind: "client", attributes: { "http.request.method": request.method, "projected.dependency": dependency } },
+      async (span) => {
+        const carrier: Record<string, string> = {};
+        telemetry.inject(carrier);
+        const outcome = await send(request, carrier);
+        if (outcome.isOk()) span.setAttributes({ "http.response.status_code": outcome.value.status });
+        else if (!HttpStatusError.is(outcome.error)) span.fail(outcome.error.message);
+        return outcome;
+      },
+    );
+  };
+
+  const send = async <S extends z.ZodType>(
+    request: HttpRequest<S>,
+    trace: Record<string, string>,
+  ): Promise<Result<HttpResponse<z.output<S>>, HttpStatusError | DependencyUnavailable | DependencyFailure>> => {
+    {
       const url = new URL(`${baseUrl}/${request.path.replace(/^\/+/, "")}`);
       for (const [key, value] of Object.entries(request.query ?? {})) {
         if (value !== undefined) url.searchParams.set(key, String(value));
@@ -179,6 +229,7 @@ export function httpClient(options: HttpClientOptions): HttpClient {
               accept: "application/json",
               ...(request.body === undefined ? {} : { "content-type": "application/json" }),
               ...options.headers?.(),
+              ...trace,
               ...request.headers,
             },
             ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
@@ -219,6 +270,8 @@ export function httpClient(options: HttpClientOptions): HttpClient {
         );
       }
       return Result.ok({ status: response.status, headers: response.headers, body: body.data });
-    },
+    }
   };
+
+  return { request: traced };
 }

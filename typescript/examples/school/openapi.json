@@ -29,6 +29,19 @@
         "summary": "Enlist a new student",
         "description": "Superseded by version 2, which lets the caller choose the id so that retries are safe.",
         "deprecated": true,
+        "x-projected-access": {
+          "permissions": [
+            "students:manage"
+          ]
+        },
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/MessageId"
@@ -88,11 +101,20 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "409": {
-            "$ref": "#/components/responses/ConcurrencyConflict"
+            "$ref": "#/components/responses/Conflict"
           },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -113,6 +135,19 @@
           "commands"
         ],
         "summary": "Enlist a new student",
+        "x-projected-access": {
+          "permissions": [
+            "students:manage"
+          ]
+        },
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/MessageId"
@@ -192,11 +227,20 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "409": {
-            "$ref": "#/components/responses/ConcurrencyConflict"
+            "$ref": "#/components/responses/Conflict"
           },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -217,6 +261,15 @@
           "commands"
         ],
         "summary": "Report that a student's lastname has changed",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/MessageId"
@@ -296,11 +349,20 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "409": {
-            "$ref": "#/components/responses/ConcurrencyConflict"
+            "$ref": "#/components/responses/Conflict"
           },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -322,6 +384,19 @@
         ],
         "summary": "Record that a student leaves the school",
         "description": "The student's record is kept; they no longer appear among enlisted students.",
+        "x-projected-access": {
+          "permissions": [
+            "students:manage"
+          ]
+        },
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/MessageId"
@@ -408,11 +483,20 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "409": {
-            "$ref": "#/components/responses/ConcurrencyConflict"
+            "$ref": "#/components/responses/Conflict"
           },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -433,6 +517,15 @@
           "queries"
         ],
         "summary": "Students who joined on a given date and are still enlisted",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/MessageId"
@@ -489,6 +582,12 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
@@ -511,6 +610,15 @@
           "queries"
         ],
         "summary": "Look up one student",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/MessageId"
@@ -566,6 +674,12 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
@@ -1456,6 +1570,19 @@
         "additionalProperties": false
       }
     },
+    "securitySchemes": {
+      "betterAuthSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "better-auth.session_token",
+        "description": "Session cookie set by better-auth's sign-in endpoints."
+      },
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Session token from better-auth's bearer plugin."
+      }
+    },
     "responses": {
       "BadRequest": {
         "description": "The body is not valid JSON or does not match the operation's input schema.",
@@ -1487,8 +1614,38 @@
           }
         }
       },
-      "ConcurrencyConflict": {
-        "description": "The command raced with another change to the same data. Safe to retry.",
+      "Unauthenticated": {
+        "description": "The operation needs an authenticated caller and the request has no valid credentials.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The caller lacks a permission the operation requires (see `x-projected-access`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Retry later: the command raced with another change to the same data (`concurrency-conflict`), or a request with the same idempotency key is still running (`request-in-progress`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "IdempotencyKeyReused": {
+        "description": "The idempotency key was already used for a different request. Use a new key.",
         "content": {
           "application/problem+json": {
             "schema": {
