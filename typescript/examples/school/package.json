@@ -1,0 +1,26 @@
+{
+  "name": "@projected-examples/school",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The school from \"It's time to put REST to rest\", built with projected.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node .tsbuild/infrastructure/config/main.js",
+    "check": "projected check",
+    "openapi": "projected openapi",
+    "lock": "projected contracts --update"
+  },
+  "dependencies": {
+    "@projected/application": "workspace:*",
+    "@projected/domain": "workspace:*",
+    "@projected/event-store-memory": "workspace:*",
+    "@projected/http": "workspace:*",
+    "@projected/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@projected/architecture": "workspace:*",
+    "@projected/cli": "workspace:*",
+    "@projected/testing": "workspace:*"
+  }
+}

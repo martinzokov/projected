@@ -1,0 +1,12 @@
+{
+  "lockfileVersion": 1,
+  "service": "school",
+  "operations": {
+    "command enlist-student@1": "sha256-PGm5XvjKYyXWBscWhfIqKfnxw4GiQhR5/jrbkaOiWdU=",
+    "command enlist-student@2": "sha256-yIioImi005Z1jVbG0c5JcrtG0du0QHThtGQDZb4j+v0=",
+    "command report-student-lastname-change@1": "sha256-FmxleLwAg0COk/BCI+4Bs/EahZuHcJVcV4umshlbyww=",
+    "command withdraw-student@1": "sha256-7xxoGiZPbIoK1Gd63yWwNhbhub6zL6mgJCfSQX1U2ZQ=",
+    "query enlisted-students-on-joining-date@1": "sha256-cYnYuvw1LNErI7k92/ToDTUk9Fecz0HAFGQWsMEgrxw=",
+    "query student-profile@1": "sha256-DmA9Fu1BnyVHWicIDtiGLj0MZqRE+pZ/LA7m1WT63Fs="
+  }
+}

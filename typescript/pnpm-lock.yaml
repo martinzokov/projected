@@ -24,6 +24,34 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
+  examples/school:
+    dependencies:
+      '@projected/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@projected/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@projected/event-store-memory':
+        specifier: workspace:*
+        version: link:../../packages/event-store-memory
+      '@projected/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@projected/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      '@projected/architecture':
+        specifier: workspace:*
+        version: link:../../packages/architecture
+      '@projected/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@projected/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+
   packages/application:
     dependencies:
       '@projected/domain':
