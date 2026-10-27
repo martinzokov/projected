@@ -276,21 +276,6 @@ A consumer MUST dispatch it exactly as an HTTP request, then:
 
 The message id MUST be used as the idempotency key, so a redelivered command never runs twice.
 
-### 4.3 Transports
-
-A broker binding MUST provide at-least-once delivery, per-message acknowledgement, bounded
-redelivery and dead-lettering:
-
-- **Topics.** Commands and events are published to named topics. Dead letters go to
-  `<topic>.dead-letter`, with the original body, headers and message id.
-- **Consumer groups.** Every group receives every message; consumers in one group share them.
-- **Keys.** A message MAY have a key; messages with the same key MUST be delivered to a group in
-  publish order. Relayed events use their stream name as the key.
-- **Headers.** Message headers carry `traceparent`/`tracestate` and the message id.
-
-The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing`) is the
-executable form of this section; Kafka and NATS JetStream bindings pass it.
-
 ### 4.2 Events
 
 Services publish recorded events as they are stored:
@@ -312,6 +297,21 @@ Services publish recorded events as they are stored:
 Events SHOULD be published by reading the event store from a checkpoint (the store is the
 outbox), so an event is never stored without eventually being published. Consumers MUST
 tolerate duplicates.
+
+### 4.3 Transports
+
+A broker binding MUST provide at-least-once delivery, per-message acknowledgement, bounded
+redelivery and dead-lettering:
+
+- **Topics.** Commands and events are published to named topics. Dead letters go to
+  `<topic>.dead-letter`, with the original body, headers and message id.
+- **Consumer groups.** Every group receives every message; consumers in one group share them.
+- **Keys.** A message MAY have a key; messages with the same key MUST be delivered to a group in
+  publish order. Relayed events use their stream name as the key.
+- **Headers.** Message headers carry `traceparent`/`tracestate` and the message id.
+
+The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing`) is the
+executable form of this section; Kafka and NATS JetStream bindings pass it.
 
 ---
 
