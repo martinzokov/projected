@@ -1,4 +1,4 @@
-import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes } from "@projected/auth-better-auth";
+import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, rolesOf } from "@projected/auth-better-auth";
 import { httpHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
@@ -13,9 +13,16 @@ const telemetry = openTelemetry();
 
 const school = composeSchool({ ...infrastructure, clock, ids: randomIds(), telemetry, onDefect: (defect) => console.error("defect", defect) });
 
+// Registrars manage enrolment: users with better-auth's admin role, or listed in SCHOOL_ADMINS.
+const admins = (process.env.SCHOOL_ADMINS ?? "").split(",").filter((email) => email !== "");
+const authenticator = betterAuthAuthenticator(infrastructure.auth, {
+  permissions: (session) =>
+    rolesOf(session).includes("admin") || admins.includes(session.user.email ?? "") ? ["students:manage"] : [],
+});
+
 const server = await serve(
   httpHandler(school, {
-    authenticator: betterAuthAuthenticator(infrastructure.auth, { roles: { admin: ["students:manage"] } }),
+    authenticator,
     routes: betterAuthRoutes(infrastructure.auth),
     openApi: { version: "1.0.0", securitySchemes: betterAuthSecuritySchemes() },
   }),

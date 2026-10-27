@@ -26,6 +26,9 @@ jobs:
       # Build, lint, tests (including the architecture fitness tests) and `projected check`
       # (layout, import boundaries, code rules, contract lock, OpenAPI freshness) for every example.
       - run: pnpm check
+      # Postgres, Kafka and NATS for the adapters' conformance suites.
+      - run: docker compose up -d --wait
+      - run: pnpm test:integration
 
   vendor:
     name: Vendored anti-slop is untouched

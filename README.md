@@ -4,9 +4,14 @@
 
 Developers and AI coding agents write events, decisions, commands, queries and handlers.
 projected derives everything around them: HTTP endpoints shaped as business operations, input
-validation, OpenAPI 3.1, typed clients, message consumers, persistence with optimistic
-concurrency, and projections. The hexagonal architecture is enforced by the compiler and by
-checks that fail the build, so agent-written code cannot quietly erode it.
+validation, OpenAPI 3.1, typed clients, message consumers, PostgreSQL persistence with optimistic
+concurrency, projections, access control, duplicate command protection and distributed tracing.
+The hexagonal architecture is enforced by the compiler and by checks that fail the build, so
+agent-written code cannot quietly erode it.
+
+> **Two flavours.** `master` is event-sourced. The [`state-based`](../../tree/state-based) branch
+> has the same contracts, transports, auth, idempotency, tracing and enforcement, but stores each
+> aggregate's current state instead of its events.
 
 ```ts
 // domain — a pure decision
@@ -19,6 +24,7 @@ export function enlist(state: StudentState, input: Enlistment): Decision<typeof 
 export const EnlistStudent = defineCommand({
   type: "enlist-student",
   version: 2,
+  access: { permissions: ["students:manage"] },
   input: z.object({ studentId: z.string(), firstname: z.string(), lastname: z.string(), joiningDate: z.iso.date() }),
   output: z.object({ studentId: z.string() }),
   errors: [StudentAlreadyEnlisted],
@@ -29,10 +35,12 @@ export const enlistStudent = (deps: { students: AggregateRepository<typeof Stude
     (await deps.students.execute(input.studentId, (state) => enlist(state, input), context)).map(() => ({ studentId: input.studentId }));
 ```
 
-That is the whole feature. It is served as `POST /commands/enlist-student/version/2`. A broken
-rule comes back as `200 {"status":"error","error":{"type":"StudentAlreadyEnlisted",...}}`, the
-operation is documented in `openapi.json`, and it can be called in a batch, from another service
-through a typed client, or through a message queue.
+That is the whole feature. It is served as `POST /commands/enlist-student/version/2`, only to
+callers holding `students:manage`. A broken rule comes back as
+`200 {"status":"error","error":{"type":"StudentAlreadyEnlisted",...}}`, a retried request with
+the same `Idempotency-Key` gets the original outcome instead of running twice, every step is
+traced, the operation is documented in `openapi.json`, and it can be called in a batch, from
+another service through a typed client, or through Kafka or NATS.
 
 ## Principles
 
@@ -59,42 +67,49 @@ through a typed client, or through a message queue.
 | [`spec/`](spec) | the language-neutral protocol ([`protocol.md`](spec/protocol.md)) and wire schemas |
 | [`typescript/`](typescript) | the TypeScript implementation: packages and the [school example](typescript/examples/school) |
 | [`skills/`](skills) | AI agent skills for building with projected |
-| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [roadmap](docs/roadmap.md) |
+| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [roadmap](docs/roadmap.md) |
 | [`vendor/anti-slop/`](vendor/anti-slop) | vendored copy of anti-slop's skills and configs ([`UPSTREAM.md`](vendor/anti-slop/UPSTREAM.md)) |
 | [`.claude/skills/`](.claude/skills) | links making all skills available to agents working in this repo |
 
 ## Getting started
 
-Requires Node 22.12+ and pnpm 10.
+Requires Node 22.12+ and pnpm 10; Docker for the integration tests.
 
 ```sh
 cd typescript
 pnpm install
-pnpm check          # build, lint, test, and `projected check` on the example
+pnpm check                  # build, lint, unit tests, and `projected check` on the example
+docker compose up -d --wait # Postgres, Kafka, NATS
+pnpm test:integration       # every test, including the adapters against the real servers
 ```
 
-Run the example service:
+Run the example service — in memory by default, or on real infrastructure:
 
 ```sh
 cd typescript/examples/school
-pnpm start          # after pnpm build at the workspace root
-curl -s localhost:3000/commands/enlist-student/version/2 -H 'content-type: application/json' \
-  -d '{"studentId":"s-1","firstname":"Bruce","lastname":"Wayne","joiningDate":"2023-09-22"}'
-curl -s localhost:3000/queries/enlisted-students-on-joining-date/version/1 -H 'content-type: application/json' \
-  -d '{"date":"2023-09-22"}'
+pnpm start                  # after pnpm build at the workspace root
+DATABASE_URL=postgres://projected:projected@localhost:55432/projected \
+KAFKA_BROKERS=localhost:9092 NATS_URL=nats://localhost:4222 pnpm start
 ```
+
+See [the example's README](typescript/examples/school/README.md) for signing in and calling it.
 
 ## Packages
 
 | Package | Layer | Purpose |
 |---|---|---|
 | `@projected/domain` | domain | Result, zod, `defineEvent`, `defineError`, `defineAggregate` — pure, no I/O |
-| `@projected/application` | application | `defineCommand`/`defineQuery`/`defineContracts`, handlers, ports, repository, event handlers, dispatcher |
-| `@projected/http` | infrastructure | endpoints and OpenAPI derived from contracts, typed `httpService`, Result-based `httpClient`; Node server in `@projected/http/node` |
+| `@projected/application` | application | contracts with access rules, handlers, ports (stores, auth, idempotency, telemetry), repository, event handlers, dispatcher |
+| `@projected/http` | infrastructure | endpoints and OpenAPI derived from contracts, authenticators, typed `httpService`, Result-based `httpClient`; Node server in `@projected/http/node` |
 | `@projected/messaging` | infrastructure | queued commands, consumers, event relay over a pluggable transport |
-| `@projected/store-memory` | infrastructure | in-memory event and checkpoint stores |
+| `@projected/kafka` | infrastructure | Kafka transport (`@platformatic/kafka`) |
+| `@projected/nats` | infrastructure | NATS JetStream transport — the lightweight broker |
+| `@projected/store-memory` | infrastructure | in-memory events, checkpoints, idempotency, documents |
+| `@projected/store-postgres` | infrastructure | PostgreSQL events, checkpoints, idempotency, documents, migrations |
+| `@projected/auth-better-auth` | infrastructure | better-auth sessions as principals, its routes, OpenAPI security schemes |
+| `@projected/opentelemetry` | infrastructure | the Telemetry port on OpenTelemetry |
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling |
-| `@projected/testing` | tests | given/when/then, fixed clock, sequential ids, event store conformance suite |
+| `@projected/testing` | tests | given/when/then, fixed clock, sequential ids, test authenticator and telemetry, conformance suites for every store and transport |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |
 | `@projected/cli` | tooling | `projected check`, `arch`, `openapi`, `contracts` |
 

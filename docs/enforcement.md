@@ -17,6 +17,7 @@ Run everything as CI does: `pnpm check` in `typescript/`, or `projected check` i
 | no `node:*` modules or Node globals in domain/application | presets set `types: []` | `TS2591` / `TS2307` |
 | every event has an `evolve` handler | mapped type over the aggregate's events | missing property |
 | every contract has exactly one handler | `createApplication`'s handler map is keyed by `type@version` | missing / excess property |
+| every service decides who may call it | `defineContracts` requires `access` | missing property |
 | a handler returns only its contract's output, declared errors, or infrastructure errors | `Handler<C>` return type | not assignable |
 | an event handler handles every event it subscribes to | mapped type over `events` | missing property |
 | a remote call returns the remote contract's exact types | `RemoteService<C>` | — |
@@ -79,7 +80,7 @@ worst possible outcome.
 
 | Rule | Mechanism |
 |---|---|
-| published `(type, version)` never changes input, output or errors | `projected contracts` compares fingerprints with `contracts.lock.json` |
+| published `(type, version)` never changes input, output, errors or access | `projected contracts` compares fingerprints with `contracts.lock.json` |
 | a new operation is locked before merge | same check: unlocked operations fail |
 | removing an operation is explicit | requires `--allow-removal` |
 | re-baselining is explicit and reviewed | `--rebaseline`, for toolchain upgrades that change generated JSON Schema but not the wire contract — the `openapi.json` diff must show no change to a published operation |
@@ -87,6 +88,22 @@ worst possible outcome.
 | names are kebab-case (operations), PascalCase (events, errors), camelCase (aggregates) | checked when defined; the app fails at startup and in tests |
 | contract schemas are JSON-compatible | checked when defined (`z.toJSONSchema` with `unrepresentable: "throw"`) |
 | framework error tags are reserved | `defineError` refuses them |
+| permissions are `resource:action` names, and `{ permissions: [] }` is refused | checked when defined |
+
+## Runtime guarantees with conformance suites
+
+Not static rules, but every adapter must demonstrate them against a real server:
+
+| Suite | Holds |
+|---|---|
+| `eventStoreConformance` | optimistic concurrency, per-stream and global order, immutability |
+| `checkpointStoreConformance` | positions per handler, beyond 32 bits |
+| `idempotencyStoreConformance` | exactly one concurrent claim, replay, release, lock take-over, expiry |
+| `documentStoreConformance` | equality filters, ordering, isolation, schema validation on read |
+| `messageTransportConformance` | delivery, redelivery, dead letters, consumer groups, per-key order, durability |
+
+The Postgres adapter also has a concurrent writer/reader test for global order that fails when
+its ordering lock is removed.
 
 ## Protocol
 

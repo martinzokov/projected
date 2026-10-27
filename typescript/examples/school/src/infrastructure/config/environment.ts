@@ -35,14 +35,16 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
     return postgresStores(sql);
   })();
 
-  const auth = betterAuth({
+  const authOptions = {
     baseURL: env.PUBLIC_URL ?? `http://localhost:${env.PORT ?? 3000}`,
     secret: env.AUTH_SECRET ?? "development-only-secret-change-me-0000000000",
     database: pool ?? memoryAdapter({ user: [], session: [], account: [], verification: [] }),
     emailAndPassword: { enabled: true },
     plugins: [bearer(), admin()],
-  });
-  if (pool !== undefined) await (await getMigrations(auth.options)).runMigrations();
+  };
+  // better-auth checks its tables when it is created, so they must exist first.
+  if (pool !== undefined) await (await getMigrations(authOptions)).runMigrations();
+  const auth = betterAuth(authOptions);
 
   const transports: Array<MessageTransport & { close(): Promise<void> }> = [];
   if (env.KAFKA_BROKERS !== undefined) transports.push(kafkaTransport({ brokers: env.KAFKA_BROKERS.split(","), clientId: "school" }));

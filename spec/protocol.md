@@ -30,11 +30,12 @@ Every operation has:
 | input schema | JSON Schema of the request data |
 | output schema | JSON Schema of the success value |
 | errors | the business errors the operation may return, each with a name and a data schema |
+| access | who may run it: `public`, `authenticated`, or `{ "permissions": [...] }` — see §1.3 |
 
 ### 1.1 Immutability
 
 An operation is identified by `(kind, type, version)`. Once published, an operation's input
-schema, output schema and declared errors MUST NOT change. To evolve an operation, publish
+schema, output schema, declared errors and access rule MUST NOT change. To evolve an operation, publish
 `version + 1` alongside it and mark the old version deprecated. A version MAY be removed once no
 client uses it; removal is a breaking change.
 
@@ -47,6 +48,31 @@ Implementations SHOULD enforce this with a lock file of per-operation fingerprin
 
 Schemas MUST be expressible in JSON Schema 2020-12. Values are JSON: dates are ISO-8601 strings
 (`format: date` / `date-time`), not native date types.
+
+### 1.3 Access and principals
+
+Every message is sent by a **principal** — an authenticated user or service — or anonymously:
+
+```json
+{ "id": "u-42", "kind": "user", "permissions": ["students:manage"], "claims": { "email": "head@school.test" } }
+```
+
+Each operation has an access rule, and a service MUST declare a default for operations that do
+not set one:
+
+| Rule | Who may run the operation |
+|---|---|
+| `"public"` | anyone, including anonymous callers |
+| `"authenticated"` | any principal |
+| `{ "permissions": ["students:manage"] }` | a principal holding every listed permission |
+
+Access MUST be checked before input validation, so callers who may not run an operation learn
+nothing about its input. Rules that depend on data ("only the student themselves") are business
+rules: the operation checks the principal and returns a declared business error. Permissions are
+lower-case, colon-separated names: `resource:action`.
+
+How a transport establishes the principal (cookies, bearer tokens, mTLS) is outside this
+protocol; missing or invalid credentials make a request anonymous.
 
 ---
 
@@ -90,7 +116,11 @@ the question had an answer. Declare a business error only when the caller should
 | Failure | Meaning | Retry? |
 |---|---|---|
 | `unknown-operation` | No operation with that kind, type and version | no |
+| `unauthenticated` | The operation is not public and the request is anonymous | after authenticating |
+| `forbidden` | The principal lacks a permission the operation requires | no |
 | `invalid-input` | The data does not match the input schema | no |
+| `request-in-progress` | A command with the same idempotency key is still running (§2.2) | yes |
+| `idempotency-key-reused` | The idempotency key was used for a different request (§2.2) | no, use a new key |
 | `concurrency-conflict` | The command raced another change to the same data | yes |
 | `dependency-unavailable` | Something the service needs is unreachable | yes, with backoff |
 | `dependency-failure` | Something the service needs answered unusably | no |
@@ -98,6 +128,31 @@ the question had an answer. Declare a business error only when the caller should
 
 A service MUST NOT return a business error its contract does not declare: an implementation
 that encounters one treats it as `internal-error` (a defect).
+
+### 2.2 Duplicate command protection
+
+A command MAY carry an **idempotency key**. A service that supports it MUST run a command at most
+once per key and principal:
+
+1. The first request with a key runs. If it reaches a business outcome (ok or business error),
+   the outcome is stored with a fingerprint of the request — SHA-256 of the canonical JSON
+   (object keys sorted, recursively) of `{ "kind", "operation": "<type>@<version>", "input" }`,
+   where `input` is the validated input.
+2. A later request with the same key and fingerprint gets the stored outcome, unchanged.
+3. A request with the same key and a different fingerprint fails with `idempotency-key-reused`.
+4. A request with the same key while the first is still running fails with `request-in-progress`.
+5. Protocol failures are not stored: the request may be retried with the same key.
+
+Keys are scoped to the principal, so one caller can never receive another caller's outcome.
+Stored outcomes SHOULD be kept at least 24 hours. Queries ignore idempotency keys — they are
+safe to repeat.
+
+### 2.3 Trace context
+
+Implementations SHOULD propagate W3C Trace Context (`traceparent`, `tracestate`) through every
+transport — HTTP headers and message headers — and SHOULD record the trace context of the
+command that produced an event in the event's metadata (`metadata.trace`), so that reactions to
+an event continue the trace that caused it.
 
 ---
 
@@ -123,16 +178,20 @@ Request bodies MUST be `application/json`. An empty body MUST be treated as `{}`
 
 | Situation | Status | Body |
 |---|---|---|
-| ok or business error | **200** | operation result |
+| ok or business error | **200** | operation result (also for a replayed idempotent command) |
 | batch accepted (any item outcomes) | **200** | batch result |
 | body is not JSON / not a valid batch | 400 | problem `malformed-request` |
 | input does not match the schema | 400 | problem `invalid-input`, with `issues` |
+| anonymous caller, operation not public | 401 | problem `unauthenticated`, with `WWW-Authenticate` |
+| principal lacks a permission | 403 | problem `forbidden` |
 | no such path | 404 | problem `not-found` |
 | no such operation or version | 404 | problem `unknown-operation` |
 | wrong method | 405 | problem `method-not-allowed`, with `Allow` |
 | batch too large | 413 | problem `payload-too-large` |
 | body is not JSON media type | 415 | problem `unsupported-media-type` |
 | concurrency conflict | 409 | problem `concurrency-conflict` |
+| same idempotency key still running | 409 | problem `request-in-progress` |
+| idempotency key reused for another request | 422 | problem `idempotency-key-reused` |
 | dependency failure | 502 | problem `dependency-failure` |
 | dependency unavailable | 503 | problem `dependency-unavailable`, with `Retry-After` |
 | defect | 500 | problem `internal-error` — MUST NOT reveal internals |
@@ -172,9 +231,11 @@ reach a business outcome is `{ "status": "failed", "problem": <problem details> 
 | `X-Message-Id` | request, response | Unique id of this request. Generated by the server when absent. |
 | `X-Correlation-Id` | request, response | Shared by every message in one business flow. Defaults to the message id. |
 | `X-Causation-Id` | request | Id of the message that caused this one. |
-| `Idempotency-Key` | request (commands) | Caller-chosen key identifying a command across retries. Passed to the handler. |
+| `Idempotency-Key` | request (commands) | Caller-chosen key identifying a command across retries (§2.2). |
+| `traceparent`, `tracestate` | request, between services | W3C Trace Context (§2.3). |
 
-Batch items get the message id `<message id>/<index>` and share the batch's correlation id.
+Batch items get the message id `<message id>/<index>` and share the batch's correlation id. A
+batch sent with an `Idempotency-Key` protects each item under `<key>/<index>`.
 
 ---
 
@@ -192,19 +253,43 @@ A queued command is the HTTP batch item plus routing metadata:
   "type": "enlist-student",
   "version": 2,
   "data": { "studentId": "s-1", "firstname": "Bruce", "lastname": "Wayne", "joiningDate": "2023-09-22" },
-  "metadata": { "messageId": "m-1", "correlationId": "flow-1", "causationId": "web-7" }
+  "metadata": {
+    "messageId": "m-1",
+    "correlationId": "flow-1",
+    "causationId": "web-7",
+    "principal": { "id": "u-42", "kind": "user", "permissions": ["students:manage"], "claims": {} }
+  }
 }
 ```
+
+`principal` is who sent the command, propagated from the sender's context. A consumer MAY trust
+it — appropriate when only the service's own components can publish to the topic — or run every
+command under a fixed service principal.
 
 A consumer MUST dispatch it exactly as an HTTP request, then:
 
 | Outcome | Disposition |
 |---|---|
 | ok or business error | acknowledge |
-| `concurrency-conflict`, `dependency-unavailable`, `dependency-failure` | redeliver later |
-| `unknown-operation`, `invalid-input`, `internal-error`, unparseable body | dead-letter |
+| `concurrency-conflict`, `request-in-progress`, `dependency-unavailable`, `dependency-failure` | redeliver later |
+| `unknown-operation`, `unauthenticated`, `forbidden`, `invalid-input`, `idempotency-key-reused`, `internal-error`, unparseable body | dead-letter |
 
-The message id SHOULD be used as the idempotency key.
+The message id MUST be used as the idempotency key, so a redelivered command never runs twice.
+
+### 4.3 Transports
+
+A broker binding MUST provide at-least-once delivery, per-message acknowledgement, bounded
+redelivery and dead-lettering:
+
+- **Topics.** Commands and events are published to named topics. Dead letters go to
+  `<topic>.dead-letter`, with the original body, headers and message id.
+- **Consumer groups.** Every group receives every message; consumers in one group share them.
+- **Keys.** A message MAY have a key; messages with the same key MUST be delivered to a group in
+  publish order. Relayed events use their stream name as the key.
+- **Headers.** Message headers carry `traceparent`/`tracestate` and the message id.
+
+The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing`) is the
+executable form of this section; Kafka and NATS JetStream bindings pass it.
 
 ### 4.2 Events
 
@@ -242,8 +327,20 @@ Implementations MAY use any store that provides, for the `EventStore` port:
 4. **A global log** readable after a position, in a strictly increasing `globalPosition` order.
 5. **Immutability:** stored events never change.
 
-Each event is stored with `type` (PascalCase, past tense), `schemaVersion` and `data`. Readers
-upgrade older schema versions with migrations on read, never by rewriting the store.
+Each event is stored with `type` (PascalCase, past tense), `schemaVersion`, `data` and
+`metadata`. Readers upgrade older schema versions with migrations on read, never by rewriting
+the store. Metadata conventionally holds:
+
+| Key | Meaning |
+|---|---|
+| `correlationId` | the business flow the event belongs to |
+| `causationId` | the message that caused it |
+| `principalId` | who sent that message — an audit trail for free |
+| `trace` | the W3C trace context it was recorded under (§2.3) |
+
+Besides events, a service needs checkpoints (§4.2), idempotency records (§2.2) and, usually,
+documents for read models. Each is a port with its own conformance suite; see
+[`../docs/persistence.md`](../docs/persistence.md).
 
 The TypeScript conformance suite (`eventStoreConformance` in `@projected/testing`) is the
 executable form of this section.

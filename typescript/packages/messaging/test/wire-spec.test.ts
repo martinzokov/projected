@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { createApplication, defineCommand, defineContracts, defineEvent, z } from "@projected/application";
 import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
 import { commandQueue, eventRelay, inMemoryTransport } from "@projected/messaging";
-import { sequentialIds } from "@projected/testing";
+import { principal, sequentialIds } from "@projected/testing";
 
 /** The messaging binding must produce exactly the shapes in spec/wire.schema.json. */
 
@@ -25,7 +25,15 @@ const Pinged = defineEvent("Pinged", { schema: z.object({ n: z.number() }) });
 describe("messaging binding conforms to spec/wire.schema.json", () => {
   it("for queued commands", async () => {
     const transport = inMemoryTransport();
-    const context = { metadata: { messageId: "m-1", correlationId: "c-1", causationId: undefined, idempotencyKey: undefined } };
+    const context = {
+      metadata: {
+        messageId: "m-1",
+        correlationId: "c-1",
+        causationId: undefined,
+        idempotencyKey: undefined,
+        principal: principal("u-1", ["pings:send"]),
+      },
+    };
 
     await commandQueue(defineContracts({ name: "pings", access: "public", commands: [Ping] }), transport, { topic: "t", ids: sequentialIds() }).enqueue(
       Ping,

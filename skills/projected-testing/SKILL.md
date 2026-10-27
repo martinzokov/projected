@@ -45,19 +45,25 @@ history is events — never construct state by hand, or the test stops checking 
 Build the app with the real composition root and test doubles for the outside world:
 
 ```ts
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
-import { fixedClock, sequentialIds } from "@projected/testing";
+import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory";
+import { fixedClock, principal, sequentialIds } from "@projected/testing";
 
 const clock = fixedClock("2023-10-01T09:00:00.000Z");
 const app = composeSchool({
   eventStore: inMemoryEventStore({ clock, ids: sequentialIds("event") }),
   checkpoints: inMemoryCheckpointStore(),
-  directory: inMemoryStudentDirectory(),
+  documents: inMemoryDocumentStore(),
+  idempotency: inMemoryIdempotencyStore({ clock }),
   clock,
   ids: sequentialIds("student"),
 });
+const registrar = principal("u-registrar", ["students:manage"]);
 
-const outcome = await app.execute(EnlistStudentV1, { firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" });
+const outcome = await app.execute(
+  EnlistStudentV1,
+  { firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" },
+  { principal: registrar },
+);
 expect(outcome.unwrap()).toEqual({ studentId: "student-1" });
 ```
 
@@ -66,6 +72,10 @@ path as HTTP — and returns typed output or typed errors. Inline projections ha
 it returns, so a query right after a command sees its effect.
 
 - Use `fixedClock` and `sequentialIds`: tests must be deterministic.
+- Pass a `principal(id, permissions)` in the metadata; test the access rules once per operation
+  (anonymous → `Unauthenticated`, missing permission → `Forbidden`), not in every test.
+- Test idempotency through the app: execute twice with the same `idempotencyKey`, assert one event.
+- Assert on tracing with `recordingTelemetry()` (spans, parents, attributes), never a real exporter.
 - Fake a port with a plain object implementing the interface. Don't mock framework internals.
 - To test failure handling, give the port a fake that returns
   `Result.err(new DependencyUnavailable({ dependency: "x", message: "down" }))`.
@@ -73,7 +83,8 @@ it returns, so a query right after a command sees its effect.
 ## HTTP: the protocol, without a server
 
 ```ts
-const handler = httpHandler(app);
+const handler = httpHandler(app, { authenticator: tokenAuthenticator({ "registrar-token": registrar }) });
+// requests then send `authorization: Bearer registrar-token`
 const response = await handler(new Request("http://school.test/commands/enlist-student/version/2", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input),
 }));
@@ -93,15 +104,20 @@ Prefer testing them through the app (command → query). In isolation: create an
 
 ## Adapters
 
-Every `EventStore` adapter must pass the conformance suite:
+Every store and transport passes the conformance suites for the ports it implements, against a
+real server — `eventStoreConformance`, `checkpointStoreConformance`, `idempotencyStoreConformance`,
+`documentStoreConformance`, `messageTransportConformance`:
 
 ```ts
-import { eventStoreConformance } from "@projected/testing";
-eventStoreConformance("postgres", async () => postgresEventStore(await freshSchema()));
+import { documentStoreConformance, eventStoreConformance } from "@projected/testing";
+eventStoreConformance("postgres", async () => postgresEventStore(sql, { schema: await freshSchema() }));
+documentStoreConformance("postgres", async () => postgresDocumentStore(sql, { schema: await freshSchema() }));
 ```
 
-Write the same kind of contract test for your own driven ports, and run it against both the
-in-memory fake and the real adapter — that is what keeps the fake honest.
+Gate real-server tests on an environment variable (`describe.skip` when unset) so `pnpm test`
+runs anywhere, and run them with `docker compose up -d --wait && pnpm test:integration`. Write the
+same kind of contract test for your own driven ports, and run it against both the in-memory fake
+and the real adapter — that is what keeps the fake honest.
 
 ## Architecture is tested too
 

@@ -14,9 +14,11 @@ are values, never exceptions.
 
 | Need | Port | Adapter |
 |---|---|---|
-| store events | `EventStore` (framework) | `@projected/store-memory`, future database stores |
+| store events, checkpoints, idempotency | `EventStore`, `CheckpointStore`, `IdempotencyStore` (framework) | `@projected/store-postgres`, `@projected/store-memory` |
+| store read models | your own (`StudentDirectory`) over a `DocumentStore` | your adapter in `adapter/driven/<name>` |
 | current time / ids | `Clock`, `IdGenerator` (framework) | `@projected/runtime`, `@projected/testing` |
-| a read model | your own, e.g. `StudentDirectory` | your adapter in `adapter/driven/<name>` |
+| tracing | `Telemetry` (framework) | `@projected/opentelemetry` |
+| who is calling | `Authenticator` (framework, used by transports) | `@projected/auth-better-auth` |
 | another projected service | `RemoteService<typeof theirContracts>` (framework) | `httpService`, `inProcessService` |
 | send a command asynchronously | `CommandQueue<typeof contracts>` (framework) | `commandQueue` from `@projected/messaging` |
 | a third-party HTTP API | your own, e.g. `PaymentGateway` | your adapter using `httpClient` from `@projected/http` |
@@ -38,6 +40,29 @@ export interface StudentDirectory {
 
 Return infrastructure errors (`DependencyUnavailable` when unreachable, `DependencyFailure` when
 it answered unusably) or business-meaningful results — never raw driver errors.
+
+## Read models on a DocumentStore
+
+Implement your read-model port with a `DocumentStore` collection. The same adapter then runs in
+memory in tests and on Postgres (or a future Mongo/Redis store) in production:
+
+```ts
+// src/infrastructure/adapter/driven/directory/document-student-directory.ts
+const Entry = z.object({ studentId: z.string(), firstname: z.string(), lastname: z.string(), joiningDate: z.iso.date() });
+
+export function documentStudentDirectory(documents: DocumentStore): StudentDirectory {
+  const entries = documents.collection("student-directory", Entry);   // validated on every read
+  return {
+    put: (entry) => entries.put(entry.studentId, entry),
+    remove: (studentId) => entries.delete(studentId),
+    joinedOn: (date) => entries.find({ joiningDate: date }, { orderBy: "lastname" }),
+    // ...
+  };
+}
+```
+
+`find` matches top-level fields by equality and orders by one field. Anything richer (full-text,
+aggregation) is a dedicated port with its own adapter.
 
 ## Projections: keeping a read model current
 
@@ -107,10 +132,17 @@ await deps.queue.enqueue(SendReportCard, { studentId }, context);   // Result<{ 
 ```
 
 `commandQueue(contracts, transport, { topic, ids })` implements the port; the receiving service
-runs `consumeCommands(app, transport, { topic })`, which dispatches exactly like HTTP: business
-outcomes are acknowledged, infrastructure errors redelivered, unknown/invalid/defects
-dead-lettered. Events go out with `eventRelay(transport, { name, topic })` registered as an event
-handler — the event store is the outbox, so nothing is lost between "stored" and "published".
+runs `consumeCommands(app, transport, { topic })`, which dispatches exactly like HTTP — same
+access rules and idempotency (the message id is the key, so redeliveries never run twice):
+business outcomes are acknowledged, infrastructure errors redelivered, unknown/invalid/refused
+commands and defects dead-lettered to `<topic>.dead-letter`. Events go out with
+`eventRelay(transport, { name, topic })` registered as an event handler — the event store is the
+outbox, so nothing is lost between "stored" and "published".
+
+Pick the transport in the composition root: `natsTransport({ servers })` (NATS JetStream, the
+lightweight default) or `kafkaTransport({ brokers })`; `inMemoryTransport()` in tests. The
+sender's principal travels with each command; pass `principal: servicePrincipal` to
+`consumeCommands` when the topic is not yours alone.
 
 ## A third-party HTTP API
 
@@ -130,6 +162,17 @@ export const stripePaymentGateway = (http: HttpClient): PaymentGateway => ({
 `httpClient` turns network errors, timeouts and 5xx into `DependencyUnavailable`, unexpected
 bodies into `DependencyFailure`, and statuses you list in `expectedErrors` into
 `HttpStatusError` so the adapter can translate them into business outcomes.
+
+## Who is calling, and tracing
+
+- The principal is in `context.metadata.principal` (`id`, `permissions`, `claims`). Use it for
+  business rules ("only the student's tutor"); coarse rules belong in the contract's `access`.
+  Never read tokens, cookies or headers in a use case.
+- Pass `context` to every port call and remote call: correlation, causation, the principal and
+  the trace all flow from it, and events record `principalId` and the trace automatically.
+- Tracing needs no code in use cases. Give `telemetry` to `createApplication`, to
+  `aggregateRepository(..., { telemetry })`, `commandQueue` and `httpService`/`httpClient` in the
+  composition root.
 
 ## The composition root
 

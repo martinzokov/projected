@@ -28,6 +28,7 @@ export const EnlistStudentV2 = defineCommand({
   input: z.object({ studentId: z.string().min(1), firstname: z.string().trim().min(1), lastname: z.string().trim().min(1), joiningDate: z.iso.date() }),
   output: z.object({ studentId: z.string() }),
   errors: [StudentAlreadyEnlisted], // every business error the handler may return
+  access: { permissions: ["students:manage"] }, // optional: overrides the service default
 });
 ```
 
@@ -37,6 +38,7 @@ export const EnlistStudentV2 = defineCommand({
 // src/application/port/driving/index.ts
 export const schoolContracts = defineContracts({
   name: "school",
+  access: "authenticated",          // required: who may call operations that set no `access`
   commands: [EnlistStudentV1, EnlistStudentV2, ReportStudentLastnameChange],
   queries: [EnlistedStudentsOnJoiningDate, StudentProfile],
 });
@@ -57,6 +59,21 @@ Name the business intent, from the domain's own vocabulary: `enlist-student`, `p
 `report-student-lastname-change`. Never CRUD verbs on data (`create-`, `update-`, `delete-`,
 `set-`, `patch-`, `get-`). A query names the question: `enlisted-students-on-joining-date`,
 not `students`. Two business reasons for the same data change are two commands.
+
+## Who may call it
+
+Every service declares a default `access` in `defineContracts`, and each operation may override it:
+
+| `access` | Allows |
+|---|---|
+| `"public"` | anyone, anonymous included — say so deliberately |
+| `"authenticated"` | any signed-in principal |
+| `{ permissions: ["students:manage"] }` | principals holding every listed permission (`resource:action`) |
+
+The dispatcher enforces it for HTTP and messaging alike (401/403 before input is even
+validated). Rules that depend on data — "only the student's own tutor" — are business rules: read
+`context.metadata.principal` in the handler and return a declared business error. Access is part
+of the published contract: tightening it on a published version is a new version.
 
 ## Designing the output
 
@@ -103,7 +120,9 @@ of the fingerprint. Adding a field — even an optional one — is a new version
 |---|---|
 | handler returned output | `200 {"status":"ok","value":{...}}` |
 | handler returned a declared business error | `200 {"status":"error","error":{"type":"StudentAlreadyEnlisted","message":"...","data":{...}}}` |
+| caller not signed in / lacks a permission | `401` / `403` problem details |
 | input fails the schema | `400` problem details with `issues` |
+| same `Idempotency-Key` still running / reused for other input | `409` / `422` problem details |
 | unknown type or version | `404` problem details |
 | concurrency conflict after retries | `409` problem details |
 | dependency unreachable / broken | `503` (with `Retry-After`) / `502` |
@@ -118,6 +137,7 @@ and through a message queue, unchanged. The normative description is `spec/proto
 - [ ] input validates everything the handler relies on (`.min(1)`, `.trim()`, `z.iso.date()`)
 - [ ] output is what the caller needs; "not found" is `null`, not an error
 - [ ] every business error the handler can return is in `errors`
+- [ ] `access` is right: inherited default, or a deliberate override
 - [ ] listed in `defineContracts`, bound in the composition root
 - [ ] `projected openapi` and `projected contracts --update` run, results committed
 - [ ] a published version was not edited — a new version was added instead

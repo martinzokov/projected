@@ -7,7 +7,9 @@ by machines rather than by convention.
 
 This document explains the model and records the decisions behind it. The normative,
 language-neutral protocol is [`spec/protocol.md`](../spec/protocol.md); the list of enforced rules
-is [`enforcement.md`](enforcement.md).
+is [`enforcement.md`](enforcement.md). Infrastructure is covered in
+[`persistence.md`](persistence.md), [`messaging.md`](messaging.md) and
+[`cross-cutting.md`](cross-cutting.md) (authentication, duplicate protection, tracing).
 
 ---
 
@@ -51,9 +53,9 @@ unchanged, and maps its own concepts onto it:
 | domain model | aggregates, events, decisions, business errors | `src/domain` | you |
 | driving port | **contracts** (commands, queries) | `src/application/port/driving` | you |
 | use case | **handlers**, projections, policies | `src/application/usecase` | you |
-| driven port | framework ports (`EventStore`, `Clock`, `IdGenerator`, `RemoteService`, `CommandQueue`) and your own (`StudentDirectory`) | `@projected/application`, `src/application/port/driven` | framework / you |
-| driving adapter | HTTP endpoints, message consumers | `@projected/http`, `@projected/messaging` | **framework** |
-| driven adapter | event stores, HTTP clients, your adapters | `@projected/*`, `src/infrastructure/adapter/driven` | framework / you |
+| driven port | framework ports (`EventStore`, `CheckpointStore`, `IdempotencyStore`, `DocumentStore`, `Clock`, `IdGenerator`, `Telemetry`, `RemoteService`, `CommandQueue`) and your own (`StudentDirectory`) | `@projected/application`, `src/application/port/driven` | framework / you |
+| driving adapter | HTTP endpoints, message consumers, with the `Authenticator` at the edge | `@projected/http`, `@projected/messaging`, `@projected/kafka`, `@projected/nats`, `@projected/auth-better-auth` | **framework** |
+| driven adapter | stores, brokers, HTTP clients, tracing, your adapters | `@projected/store-*`, `@projected/opentelemetry`, `src/infrastructure/adapter/driven` | framework / you |
 | composition root | `createApplication(...)` | `src/infrastructure/config` | you (wiring only) |
 
 ### How the boundaries are handled
@@ -188,6 +190,37 @@ No web framework dependency.
 upstream commit (recorded in `UPSTREAM.md`) and refreshed only by `scripts/sync-anti-slop.sh`.
 Submodules are not initialised in many CI and agent environments; a copy is always present. The
 dependency-cruiser rules in `@projected/architecture` derive from its validated TypeScript config.
+
+**D10 — Access is part of every contract, and has no implicit default.** `defineContracts`
+requires a service-wide `access`, operations may override it, and the dispatcher checks it for
+every transport before validation. Secure-by-default without magic: opening a service to
+anonymous callers is one visible line, and an agent adding an operation inherits the service's
+rule rather than an open door. Access is in OpenAPI and in the contract fingerprint.
+
+**D11 — Authentication is an edge concern; authorization is the dispatcher's.** Transports turn
+credentials into a `Principal` through an `Authenticator` port (better-auth first); use cases see
+only the principal. A new provider is a new adapter, never a change to a use case.
+
+**D12 — Duplicate protection lives in the dispatcher, keyed per principal.** Idempotency is
+applied once, for HTTP and messaging alike: the `Idempotency-Key` header or the message id. Only
+business outcomes are stored, so infrastructure failures stay retryable. The fingerprint is
+SHA-256 of canonical JSON implemented in pure TypeScript — the application layer has no platform
+crypto, and the value must match other languages byte for byte.
+
+**D13 — Tracing is a port, and trace context is data.** The application layer records spans
+through a `Telemetry` port (OpenTelemetry adapter, no-op default), and writes the trace context
+into event metadata. That is what lets a projection running minutes later, or a consumer in
+another service, continue the trace of the request that caused it.
+
+**D14 — PostgreSQL appends are ordered with an advisory lock.** Positions become visible in
+order, so a single-number checkpoint is safe; the cost is one serialized insert-and-commit per
+schema. See [`persistence.md`](persistence.md). Every storage port has a conformance suite; the
+ordering guarantee also has a concurrency test that fails without the lock.
+
+**D15 — Brokers sit behind a four-method transport.** `publish`, `subscribe` (with consumer
+groups), dead letters at `<topic>.dead-letter`, at-least-once. Kafka retries in place to keep
+partition order; NATS JetStream uses native delayed `nak`. One conformance suite holds both — and
+any future broker — to the same behaviour.
 
 ---
 

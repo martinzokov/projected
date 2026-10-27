@@ -8,8 +8,9 @@ category: software-development
 
 You write **business logic only**: events, decisions, contracts and handlers. HTTP endpoints,
 OpenAPI, message consumers, serialization, validation and persistence are derived from what you
-write. If you find yourself writing a route, a controller, a JSON parser or a SQL query for a
-feature, stop — you are in the wrong layer or reinventing the framework.
+write. If you find yourself writing a route, a controller, a JSON parser, a SQL query, a retry
+loop, an auth check on a token or a tracing span for a feature, stop — you are in the wrong layer
+or reinventing the framework.
 
 ## Where everything goes
 
@@ -60,12 +61,13 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
    export const WithdrawStudent = defineCommand({
      type: "withdraw-student",
      summary: "Record that a student leaves the school",
+     access: { permissions: ["students:manage"] },      // omit to inherit the service default
      input: z.object({ studentId: z.string(), leavingDate: z.iso.date() }),
      output: z.object({ withdrawn: z.boolean() }),
      errors: [StudentNotEnlisted],
    });
    ```
-   Add it to `defineContracts({ commands: [...] })` in `port/driving/index.ts`.
+   Add it to `defineContracts({ name, access, commands: [...] })` in `port/driving/index.ts`.
 3. **Handler** — load, decide, append; the repository does concurrency and retries:
    ```ts
    // src/application/usecase/withdraw-student.ts
@@ -86,8 +88,9 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
 7. **Verify**: run the project's check (`pnpm check` / `projected check`) and the tests. Done
    only when both are green.
 
-`POST /commands/withdraw-student/version/1` now exists, validated, documented in OpenAPI, and
-callable in a batch or from a message queue — none of which you wrote.
+`POST /commands/withdraw-student/version/1` now exists: validated, restricted to callers with
+`students:manage`, protected against duplicate retries (`Idempotency-Key`), traced, documented in
+OpenAPI, and callable in a batch or from Kafka/NATS — none of which you wrote.
 
 ## Naming: business operations, not data operations
 
@@ -118,6 +121,11 @@ user just *decide* to do?" — that is the command.
 | `await` in the domain | do async work in the handler and pass results into the decision |
 | return an error the contract does not list | add it to the contract's `errors` (a new version if published), or map it |
 | call another service | depend on its contracts through `RemoteService` (`projected-integrations` skill) |
+| restrict who may call an operation | set `access` on the contract (`"public"`, `"authenticated"`, `{ permissions }`) |
+| know who is calling | read `context.metadata.principal` in the handler; never parse tokens or cookies |
+| stop a retried command running twice | nothing: the dispatcher handles `Idempotency-Key` and message ids; make the decision idempotent too |
+| store a read model | a `DocumentStore` collection behind your own port (`projected-integrations`) |
+| add a span or log a trace id | nothing: operations, aggregates and event handlers are already traced |
 
 **Never** "fix" a failing check by loosening it: do not add `lib`/`types`/`references` to a
 layer's `tsconfig.json`, do not add `eslint-disable` or `@ts-ignore` (they are ignored and

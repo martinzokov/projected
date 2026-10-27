@@ -22,6 +22,14 @@ cd typescript && pnpm install && pnpm check
 before you finish. Individual steps: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm exec vitest run <path>`.
 The architecture fitness tests compile fixtures with `tsc -b`, so build before running them.
 
+Adapter tests against real servers are skipped unless their variables are set. When you touch a
+store or transport, run them too:
+
+```sh
+docker compose up -d --wait   # in typescript/: Postgres :55432, Kafka :9092, NATS :4222
+pnpm test:integration         # sets PROJECTED_TEST_DATABASE_URL, _KAFKA_BROKERS, _NATS_URL
+```
+
 ## Rules for framework changes
 
 - **TypeScript stays on 6.0.x.** TypeScript 7 has no JavaScript compiler API; typescript-eslint
@@ -36,7 +44,14 @@ The architecture fitness tests compile fixtures with `tsc -b`, so build before r
 - **The protocol and the code move together.** Change `spec/protocol.md` and
   `spec/wire.schema.json` with the HTTP/messaging adapters; the wire-spec tests check real output
   against the schema.
-- **New `EventStore` adapters must pass `eventStoreConformance`** from `@projected/testing`.
+- **Every store and transport passes its conformance suites** from `@projected/testing`
+  (`eventStoreConformance`, `checkpointStoreConformance`, `idempotencyStoreConformance`,
+  `documentStoreConformance`, `messageTransportConformance`), against a real server. A new
+  guarantee goes into the suite, not into one adapter's tests.
+- **Adapters never throw.** Map driver failures to `DependencyUnavailable` /
+  `DependencyFailure`, conflicts to `ConcurrencyConflict`.
+- **Cross-cutting behaviour belongs in the dispatcher**, not in transports: access checks,
+  idempotency and operation spans apply to HTTP and messaging through the same path.
 - **Public API changes update the skills and the example.** Skill snippets must compile against
   the real API; the school example is the reference app and must stay green under `projected check`.
 - **Compile-time guarantees are tested with `@ts-expect-error`** in the package tests (a missing
