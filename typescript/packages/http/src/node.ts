@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type { FetchHandler } from "./server.js";
 
+/** Node's HTTP server for a projected handler: `import { serve } from "@projected/http/node"`. */
+
 export interface ServeOptions {
   /** Defaults to 3000. Use 0 for a random free port. */
   readonly port?: number;

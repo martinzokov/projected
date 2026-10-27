@@ -45,7 +45,7 @@ export async function openapi(project: Project, options: { check: boolean }): Pr
 
 export async function contractsLock(
   project: Project,
-  options: { update: boolean; allowRemoval: boolean },
+  options: { update: boolean; allowRemoval: boolean; rebaseline?: boolean },
 ): Promise<CommandResult> {
   const contracts = await loadContracts(project);
   const file = relative(project.root, project.lockPath);
@@ -70,6 +70,13 @@ export async function contractsLock(
     }
   }
 
+  if (options.rebaseline) {
+    writeFileSync(project.lockPath, render(updateLock(lock, contracts, { allowRemoval: options.allowRemoval, rebaseline: true })));
+    return pass(
+      `contracts: rebaselined ${file}${changed.length > 0 ? ` — accepted new fingerprints for ${changed.join(", ")}` : ""}`,
+      "contracts: only do this after a toolchain upgrade, and only if the openapi.json diff shows no change to any published operation.",
+    );
+  }
   if (options.update) {
     writeFileSync(project.lockPath, render(updateLock(lock, contracts, { allowRemoval: options.allowRemoval })));
     const accepted = [...added, ...(options.allowRemoval ? removed.map((key) => `${key} (removed)`) : [])];

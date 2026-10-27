@@ -68,6 +68,12 @@ describe("lock", () => {
     expect(Object.keys(updateLock(lockOf(v1), shrunk, { allowRemoval: true }).operations)).not.toContain("query free-seats@1");
   });
 
+  it("accepts current fingerprints only when rebaselining", () => {
+    const edited = defineContracts({ name: "cinema", commands: [reserve({ output: z.object({}) })], queries: [seats] });
+
+    expect(compareLock(updateLock(lockOf(v1), edited, { rebaseline: true }), edited).changed).toEqual([]);
+  });
+
   it("keeps the published fingerprint of a changed operation on update", () => {
     const edited = defineContracts({ name: "cinema", commands: [reserve({ output: z.object({}) })], queries: [seats] });
 

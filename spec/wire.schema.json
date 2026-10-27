@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:projected:spec:wire:1",
+  "title": "projected wire formats, protocol version 1",
+  "description": "Shapes shared by every projected implementation. Normative text: protocol.md.",
+  "$defs": {
+    "OperationType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "Version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "WireError": {
+      "type": "object",
+      "required": ["type", "message", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "message": { "type": "string" },
+        "data": { "type": "object" }
+      }
+    },
+    "OperationResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "value"],
+          "additionalProperties": false,
+          "properties": { "status": { "const": "ok" }, "value": true }
+        },
+        {
+          "type": "object",
+          "required": ["status", "error"],
+          "additionalProperties": false,
+          "properties": { "status": { "const": "error" }, "error": { "$ref": "#/$defs/WireError" } }
+        }
+      ]
+    },
+    "ValidationIssue": {
+      "type": "object",
+      "required": ["path", "message"],
+      "properties": {
+        "path": { "type": "array", "items": { "type": ["string", "integer"] } },
+        "message": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
+    "ProblemDetails": {
+      "type": "object",
+      "required": ["type", "title", "status"],
+      "properties": {
+        "type": { "type": "string", "pattern": "^urn:projected:problem:[a-z-]+$" },
+        "title": { "type": "string" },
+        "status": { "type": "integer", "minimum": 400, "maximum": 599 },
+        "detail": { "type": "string" },
+        "issues": { "type": "array", "items": { "$ref": "#/$defs/ValidationIssue" } }
+      }
+    },
+    "BatchItem": {
+      "type": "object",
+      "required": ["type", "version"],
+      "properties": {
+        "type": { "$ref": "#/$defs/OperationType" },
+        "version": { "$ref": "#/$defs/Version" },
+        "data": true
+      }
+    },
+    "CommandBatch": {
+      "type": "object",
+      "required": ["commands"],
+      "properties": { "commands": { "type": "array", "items": { "$ref": "#/$defs/BatchItem" } } }
+    },
+    "QueryBatch": {
+      "type": "object",
+      "required": ["queries"],
+      "properties": { "queries": { "type": "array", "items": { "$ref": "#/$defs/BatchItem" } } }
+    },
+    "FailedBatchItem": {
+      "type": "object",
+      "required": ["status", "problem"],
+      "additionalProperties": false,
+      "properties": { "status": { "const": "failed" }, "problem": { "$ref": "#/$defs/ProblemDetails" } }
+    },
+    "BatchResult": {
+      "type": "object",
+      "required": ["results"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": { "anyOf": [{ "$ref": "#/$defs/OperationResult" }, { "$ref": "#/$defs/FailedBatchItem" }] }
+        }
+      }
+    },
+    "CommandMessage": {
+      "type": "object",
+      "required": ["kind", "type", "version", "data", "metadata"],
+      "properties": {
+        "kind": { "const": "command" },
+        "type": { "$ref": "#/$defs/OperationType" },
+        "version": { "$ref": "#/$defs/Version" },
+        "data": true,
+        "metadata": {
+          "type": "object",
+          "required": ["messageId", "correlationId"],
+          "properties": {
+            "messageId": { "type": "string" },
+            "correlationId": { "type": "string" },
+            "causationId": { "type": "string" }
+          }
+        }
+      }
+    },
+    "EventMessage": {
+      "type": "object",
+      "required": ["eventId", "stream", "streamVersion", "globalPosition", "type", "schemaVersion", "data", "metadata", "recordedAt"],
+      "properties": {
+        "eventId": { "type": "string" },
+        "stream": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*-.+$" },
+        "streamVersion": { "type": "integer", "minimum": 1 },
+        "globalPosition": { "type": "integer", "minimum": 1 },
+        "type": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "schemaVersion": { "type": "integer", "minimum": 1 },
+        "data": true,
+        "metadata": { "type": "object" },
+        "recordedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

@@ -11,7 +11,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@projected/application": "workspace:*",
     "better-result": "^3.0.1",
@@ -19,6 +22,8 @@
   },
   "devDependencies": {
     "@projected/event-store-memory": "workspace:*",
-    "@projected/testing": "workspace:*"
+    "@projected/testing": "workspace:*",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   }
 }

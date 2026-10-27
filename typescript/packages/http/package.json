@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
     }
   },
   "files": [
@@ -23,6 +27,8 @@
   "devDependencies": {
     "@projected/event-store-memory": "workspace:*",
     "@projected/testing": "workspace:*",
-    "@seriousme/openapi-schema-validator": "^2.11.0"
+    "@seriousme/openapi-schema-validator": "^2.11.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   }
 }

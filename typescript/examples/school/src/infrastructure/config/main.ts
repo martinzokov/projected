@@ -1,5 +1,6 @@
 import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
-import { httpHandler, serve } from "@projected/http";
+import { httpHandler } from "@projected/http";
+import { serve } from "@projected/http/node";
 import { randomIds, systemClock } from "@projected/runtime";
 import { inMemoryStudentDirectory } from "../adapter/driven/directory/in-memory-student-directory.js";
 import { composeSchool } from "./school.js";

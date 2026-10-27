@@ -16,7 +16,8 @@ import {
   type CommandHandler,
   type QueryHandler,
 } from "@projected/application";
-import { HttpStatusError, httpClient, httpHandler, httpService, openApiDocument, serve, type FetchHandler } from "@projected/http";
+import { HttpStatusError, httpClient, httpHandler, httpService, openApiDocument, type FetchHandler } from "@projected/http";
+import { serve } from "@projected/http/node";
 import { sequentialIds } from "@projected/testing";
 
 class BookAlreadyBorrowed extends defineError("BookAlreadyBorrowed", {
@@ -201,8 +202,9 @@ describe("httpHandler", () => {
 
     const inside = await post(h, "/api/queries/available-books/version/1");
     const outside = await post(h, "/queries/available-books/version/1");
+    const lookalike = await post(h, "/apix/queries/available-books/version/1");
 
-    expect([inside.status, outside.status]).toEqual([200, 404]);
+    expect([inside.status, outside.status, lookalike.status]).toEqual([200, 404, 404]);
   });
 
   it("serves health and the OpenAPI document", async () => {

@@ -16,6 +16,7 @@ import {
   type CommandHandler,
   type EventStore,
   type OperationDefect,
+  type QueryHandler,
 } from "@projected/application";
 import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/event-store-memory";
 import { sequentialIds } from "@projected/testing";
@@ -155,6 +156,18 @@ describe("dispatch", () => {
 
     expect(outcome.isErr() && outcome.error._tag).toBe("OperationDefect");
     expect(onDefect).toHaveBeenCalledOnce();
+  });
+
+  it("treats a handler that returns no Result as a defect", async () => {
+    const Forgetful = defineQuery({ type: "forgetful", input: z.object({}), output: z.object({}) });
+    const app = createApplication(defineContracts({ name: "forgetful", queries: [Forgetful] }), {
+      ids: sequentialIds(),
+      queries: { "forgetful@1": (() => undefined) as unknown as QueryHandler<typeof Forgetful> },
+    });
+
+    const outcome = await app.dispatch({ kind: "query", type: "forgetful", version: 1, input: {} });
+
+    expect(outcome.isErr() && outcome.error._tag).toBe("OperationDefect");
   });
 
   it("treats output that breaks the contract as a defect", async () => {

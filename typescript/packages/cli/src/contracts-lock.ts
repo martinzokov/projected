@@ -78,11 +78,20 @@ export function compareLock(lock: ContractsLock, contracts: AnyContracts): LockC
 
 /**
  * The lock after accepting new operations (and, when allowed, removals). Changed operations
- * keep their published fingerprint, so the check keeps failing until the change is reverted.
+ * keep their published fingerprint, so the check keeps failing until the change is reverted —
+ * unless `rebaseline` is set, which accepts every current fingerprint. That exists for toolchain
+ * upgrades that change the generated JSON Schema without changing the wire contract (review the
+ * `openapi.json` diff to confirm), never for editing a published operation.
  */
-export function updateLock(lock: ContractsLock | undefined, contracts: AnyContracts, options: { allowRemoval?: boolean } = {}): ContractsLock {
+export function updateLock(
+  lock: ContractsLock | undefined,
+  contracts: AnyContracts,
+  options: { allowRemoval?: boolean; rebaseline?: boolean } = {},
+): ContractsLock {
   const current = lockOf(contracts);
-  const operations: Record<string, string> = { ...current.operations, ...(lock?.operations ?? {}) };
+  const operations: Record<string, string> = options.rebaseline
+    ? { ...(lock?.operations ?? {}), ...current.operations }
+    : { ...current.operations, ...(lock?.operations ?? {}) };
   if (options.allowRemoval) {
     for (const key of Object.keys(operations)) if (!(key in current.operations)) delete operations[key];
   }

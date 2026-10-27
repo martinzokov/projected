@@ -151,6 +151,12 @@ importers:
       '@seriousme/openapi-schema-validator':
         specifier: ^2.11.0
         version: 2.11.0
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
 
   packages/messaging:
     dependencies:
@@ -170,6 +176,12 @@ importers:
       '@projected/testing':
         specifier: workspace:*
         version: link:../testing
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
 
   packages/runtime:
     dependencies:

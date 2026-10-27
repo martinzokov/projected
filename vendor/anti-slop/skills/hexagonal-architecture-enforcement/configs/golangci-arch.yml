@@ -1,0 +1,163 @@
+# Hexagonal boundary enforcement for Go, via golangci-lint's depguard.
+# Verified against golangci-lint 2.12.2 (config schema v2) and Go 1.26.
+#
+#   golangci-lint run ./...
+#
+# Merge these keys into your existing .golangci.yml — do not replace the file
+# unless depguard is the only linter you run (`default: none` below disables
+# everything else).
+#
+# Layout (module github.com/acme/app):
+#   internal/domain/{model,service,event,exception}/
+#   internal/application/usecase/
+#   internal/application/port/{driving,driven}/
+#   internal/infrastructure/adapter/driving/<name>/    web, messaging, ...
+#   internal/infrastructure/adapter/driven/<name>/     persistence, payment, messaging, ...
+#   internal/infrastructure/config/                    composition root
+#   cmd/app/                                           entry point
+#
+# Two things Go gives you for free, before any of this config:
+#   * `internal/` is enforced by the compiler — nothing outside the module can
+#     import these packages at all.
+#   * Import cycles are a compile error, so the "A imports B imports A" failure
+#     mode that other stacks need a linter for cannot occur.
+#
+# `desc` text is printed verbatim on violation. Write it as an instruction to
+# whoever hits it, not as a label.
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - depguard
+
+  settings:
+    depguard:
+      rules:
+        # ------------------------------------------------------------ domain
+        domain:
+          files:
+            - "**/internal/domain/**"
+          deny:
+            - pkg: github.com/acme/app/internal/application
+              desc: "domain must not import application — dependencies point inward. Declare a driven port instead."
+            - pkg: github.com/acme/app/internal/infrastructure
+              desc: "domain must not import infrastructure — dependencies point inward. Declare a driven port instead."
+            - pkg: database/sql
+              desc: "domain must not know about persistence. Take an interface, or declare a driven port."
+            - pkg: net/http
+              desc: "domain must not know about transport."
+            - pkg: github.com/jackc/pgx
+              desc: "domain must not depend on a database driver."
+            - pkg: gorm.io/gorm
+              desc: "domain must not depend on an ORM — a gorm tag on an entity is an outward dependency."
+            - pkg: github.com/segmentio/kafka-go
+              desc: "domain must not depend on a broker client. Declare an EventPublisher port."
+
+        # ------------------------------------------------------- application
+        application:
+          files:
+            - "**/internal/application/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure
+              desc: "application must not import infrastructure. Declare a port in application/port/driven and let the adapter implement it."
+            - pkg: database/sql
+              desc: "use cases must not touch persistence directly — that is what the driven port is for."
+            - pkg: net/http
+              desc: "use cases must not touch transport — convert at the driving adapter."
+            - pkg: gorm.io/gorm
+              desc: "use cases must not depend on an ORM."
+
+        # Ports are pure interfaces over domain types.
+        ports:
+          files:
+            - "**/internal/application/port/**"
+          deny:
+            - pkg: github.com/acme/app/internal/application/usecase
+              desc: "a port must not import a use case — the use case implements the driving port, not the reverse."
+
+        # ------------------------------------------- driving / driven adapters
+        driving-adapters:
+          files:
+            - "**/internal/infrastructure/adapter/driving/**"
+          deny:
+            - pkg: github.com/acme/app/internal/application/usecase
+              desc: "a driving adapter enters through application/port/driving — importing the use case type welds the transport to the implementation."
+            - pkg: github.com/acme/app/internal/application/port/driven
+              desc: "a driving adapter must not use driven ports — that is upside down."
+
+        driven-adapters:
+          files:
+            - "**/internal/infrastructure/adapter/driven/**"
+          deny:
+            - pkg: github.com/acme/app/internal/application/usecase
+              desc: "a driven adapter implements a driven port and nothing else — importing a use case is a cycle in disguise."
+            - pkg: github.com/acme/app/internal/application/port/driving
+              desc: "a driven adapter must not use driving ports."
+
+        # --------------------------------------------- adapter independence
+        # depguard denies by package prefix and has no back-references, so each
+        # adapter needs its own rule naming its four siblings. Deny-by-prefix on
+        # `.../adapter` would be shorter but would also flag an adapter importing
+        # its OWN subpackage (web/dto), so the explicit form is the correct one.
+        adapter-driving-web:
+          files:
+            - "**/internal/infrastructure/adapter/driving/web/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driving/messaging
+              desc: "adapters must not import each other. Route through a use case, or a port both know."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven
+              desc: "adapters must not import each other. Route through a use case, or a port both know."
+
+        adapter-driving-messaging:
+          files:
+            - "**/internal/infrastructure/adapter/driving/messaging/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driving/web
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven
+              desc: "adapters must not import each other."
+
+        adapter-driven-persistence:
+          files:
+            - "**/internal/infrastructure/adapter/driven/persistence/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driving
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven/payment
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven/messaging
+              desc: "adapters must not import each other."
+
+        adapter-driven-payment:
+          files:
+            - "**/internal/infrastructure/adapter/driven/payment/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driving
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven/persistence
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven/messaging
+              desc: "adapters must not import each other."
+
+        adapter-driven-messaging:
+          files:
+            - "**/internal/infrastructure/adapter/driven/messaging/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driving
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven/persistence
+              desc: "adapters must not import each other."
+            - pkg: github.com/acme/app/internal/infrastructure/adapter/driven/payment
+              desc: "adapters must not import each other."
+
+        # ------------------------------------------------- composition root
+        # Everything except the composition root itself and the entry point.
+        composition-root:
+          files:
+            - "**/internal/**"
+            - "!**/internal/infrastructure/config/**"
+          deny:
+            - pkg: github.com/acme/app/internal/infrastructure/config
+              desc: "nothing may import the composition root — config wires the app together; take the value as a parameter instead."

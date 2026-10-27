@@ -1,5 +1,4 @@
 import type { AnyContracts, Application, Metadata, OperationKind, OperationResult } from "@projected/application";
-import { randomUUID } from "node:crypto";
 import { openApiDocument, type OpenApiOptions } from "./openapi.js";
 import { HEADERS, PLURAL, PROBLEM_TYPES, problem, problemForDispatchError, type Problem } from "./protocol.js";
 
@@ -42,7 +41,7 @@ const KIND: Record<string, OperationKind> = { commands: "command", queries: "que
 export function httpHandler<C extends AnyContracts>(app: Application<C>, options: HttpHandlerOptions = {}): FetchHandler {
   const basePath = (options.basePath ?? "").replace(/\/+$/, "");
   const maxBatchSize = options.maxBatchSize ?? 100;
-  const newId = options.messageIds ?? randomUUID;
+  const newId = options.messageIds ?? (() => crypto.randomUUID());
   const openApiOptions = typeof options.openApi === "object" ? options.openApi : {};
   const document = options.openApi === false ? undefined : openApiDocument(app.contracts, openApiOptions);
 
@@ -84,7 +83,7 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
 
   return async (request) => {
     const url = new URL(request.url);
-    if (basePath !== "" && !url.pathname.startsWith(basePath)) {
+    if (basePath !== "" && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) {
       return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
     }
     const path = url.pathname.slice(basePath.length) || "/";

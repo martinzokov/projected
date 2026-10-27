@@ -12,6 +12,9 @@ Commands:
   openapi [--check]     write openapi.json from the contracts, or verify it is current
   contracts [--update] [--allow-removal]
                         verify published contracts are unchanged, or lock new ones
+  contracts --rebaseline
+                        accept current fingerprints after a toolchain upgrade (review
+                        the openapi.json diff first: it must show no contract change)
 
 Configuration: optional projected.json in the project root (contracts, openapi, lock,
 applicationPackages, domainPackages).`;
@@ -28,6 +31,7 @@ export async function run(argv: readonly string[], print: (line: string) => void
         check: { type: "boolean", default: false },
         update: { type: "boolean", default: false },
         "allow-removal": { type: "boolean", default: false },
+        rebaseline: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -60,7 +64,9 @@ export async function run(argv: readonly string[], print: (line: string) => void
       steps.push(() => openapi(project, { check: values.check }));
       break;
     case "contracts":
-      steps.push(() => contractsLock(project, { update: values.update, allowRemoval: values["allow-removal"] }));
+      steps.push(() =>
+        contractsLock(project, { update: values.update, allowRemoval: values["allow-removal"], rebaseline: values.rebaseline }),
+      );
       break;
     default:
       print(`Unknown command: ${command}`);

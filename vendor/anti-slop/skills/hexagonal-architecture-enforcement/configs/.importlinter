@@ -1,0 +1,142 @@
+# Hexagonal boundary enforcement for Python.
+# Run: lint-imports          (pip install import-linter)
+#
+# Layout:
+#   myapp/domain/{model,service,event,exception}/
+#   myapp/application/usecase/
+#   myapp/application/port/{driving,driven}/
+#   myapp/infrastructure/adapter/driving/<name>/    web, messaging, ...
+#   myapp/infrastructure/adapter/driven/<name>/     persistence, payment, messaging, ...
+#   myapp/infrastructure/config/                    composition root
+
+[importlinter]
+root_package = myapp
+# Required for the external-package contracts below to see third-party imports.
+include_external_packages = True
+
+
+# ---------------------------------------------------------------- the layer rule
+
+[importlinter:contract:layers]
+name = Hexagonal layers
+type = layers
+# `containers` is required for `exhaustive`; layers are named relative to it.
+containers =
+    myapp
+# Highest first. Each layer may import those below it, never above.
+layers =
+    infrastructure
+    application
+    domain
+# Any other module directly inside myapp/ must be listed in exhaustive_ignores or
+# this fails — which is what stops a fourth, unpoliced layer (myapp/utils/,
+# myapp/services/) appearing later.
+exhaustive = True
+
+[importlinter:contract:application-layers]
+name = Use cases depend on ports, never the reverse
+type = layers
+containers =
+    myapp.application
+layers =
+    usecase
+    port
+exhaustive = True
+
+[importlinter:contract:domain-layers]
+name = Domain inner ordering
+# Optional, but it keeps the domain readable: services orchestrate models,
+# models never reach back into services. Drop this contract if your domain
+# genuinely needs a flatter shape.
+type = layers
+containers =
+    myapp.domain
+layers =
+    service
+    event
+    model
+    exception
+exhaustive = True
+
+
+# ------------------------------------------------------- driving / driven split
+
+[importlinter:contract:driving-adapters]
+name = Driving adapters enter through driving ports only
+type = forbidden
+source_modules =
+    myapp.infrastructure.adapter.driving
+forbidden_modules =
+    myapp.application.usecase
+    myapp.application.port.driven
+
+[importlinter:contract:driven-adapters]
+name = Driven adapters implement driven ports only
+type = forbidden
+source_modules =
+    myapp.infrastructure.adapter.driven
+forbidden_modules =
+    myapp.application.usecase
+    myapp.application.port.driving
+
+[importlinter:contract:adapter-independence]
+name = Adapters do not know each other
+type = independence
+modules =
+    myapp.infrastructure.adapter.driving.web
+    myapp.infrastructure.adapter.driving.messaging
+    myapp.infrastructure.adapter.driven.persistence
+    myapp.infrastructure.adapter.driven.payment
+    myapp.infrastructure.adapter.driven.messaging
+
+[importlinter:contract:composition-root]
+name = Nothing imports the composition root
+type = forbidden
+source_modules =
+    myapp.domain
+    myapp.application
+    myapp.infrastructure.adapter
+forbidden_modules =
+    myapp.infrastructure.config
+
+
+# ------------------------------------------------------------ framework purity
+# The `layers` contract only inspects myapp.*; without these, a domain entity is
+# free to import sqlalchemy. These are the contracts that keep the core pure.
+
+[importlinter:contract:domain-purity]
+name = Domain imports no infrastructure
+type = forbidden
+source_modules =
+    myapp.domain
+forbidden_modules =
+    sqlalchemy
+    django
+    fastapi
+    flask
+    requests
+    httpx
+    boto3
+    redis
+    celery
+    kafka
+    stripe
+    psycopg2
+
+[importlinter:contract:application-purity]
+name = Use cases and ports import no frameworks
+type = forbidden
+source_modules =
+    myapp.application
+forbidden_modules =
+    sqlalchemy
+    django
+    fastapi
+    flask
+    requests
+    httpx
+    boto3
+    redis
+    kafka
+    stripe
+    psycopg2

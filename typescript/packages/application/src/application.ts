@@ -22,6 +22,14 @@ import { decodeWireError, encodeWireError, toValidationIssues, type OperationReq
 
 type MaybePromise<T> = T | Promise<T>;
 
+/** Structural, so it also recognises Results from another copy of better-result. */
+const isResult = (value: unknown): value is Result<unknown, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  "status" in value &&
+  (value.status === "ok" || value.status === "error") &&
+  typeof (value as { isOk?: unknown }).isOk === "function";
+
 /**
  * Handles one operation. Returns the contract's output, one of its declared business errors, or
  * an infrastructure error. Returning any other error does not compile.
@@ -175,10 +183,8 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
     } catch (cause) {
       return defect(contract, "handler threw", cause);
     }
-    if (!Result.isOk(outcome as Result<unknown, unknown>) && !Result.isError(outcome as Result<unknown, unknown>)) {
-      return defect(contract, "handler did not return a Result", outcome);
-    }
-    const result = outcome as Result<unknown, unknown>;
+    if (!isResult(outcome)) return defect(contract, "handler did not return a Result", outcome);
+    const result = outcome;
 
     if (result.isOk()) {
       const output = contract.output.safeParse(result.value);

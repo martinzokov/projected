@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: typescript/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # Build, lint, tests (including the architecture fitness tests) and `projected check`
+      # (layout, import boundaries, code rules, contract lock, OpenAPI freshness) for every example.
+      - run: pnpm check
+
+  vendor:
+    name: Vendored anti-slop is untouched
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Re-sync at the recorded commit and require no diff
+        run: |
+          commit="$(grep -o '[0-9a-f]\{40\}' vendor/anti-slop/UPSTREAM.md | head -1)"
+          scripts/sync-anti-slop.sh "$commit"
+          git diff --exit-code -- vendor/anti-slop
