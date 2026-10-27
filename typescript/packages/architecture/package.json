@@ -1,0 +1,38 @@
+{
+  "name": "@projected/architecture",
+  "version": "0.1.0",
+  "description": "Architecture enforcement for projected apps: per-layer TypeScript presets, dependency-cruiser and ESLint rules for hexagonal boundaries and domain purity.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./eslint": {
+      "types": "./dist/eslint.d.ts",
+      "default": "./dist/eslint.js"
+    },
+    "./dependency-cruiser": {
+      "types": "./dist/dependency-cruiser.d.ts",
+      "default": "./dist/dependency-cruiser.js"
+    },
+    "./tsconfig/*.json": "./tsconfig/*.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "tsconfig"
+  ],
+  "dependencies": {
+    "dependency-cruiser": "^18.7.0",
+    "eslint": "^10.13.0",
+    "typescript-eslint": "^8.72.1",
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@projected/application": "workspace:*",
+    "@projected/domain": "workspace:*"
+  }
+}

@@ -1,0 +1,91 @@
+import { cruise, type ICruiseResult } from "dependency-cruiser";
+import { ESLint } from "eslint";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { dependencyCruiserConfig, dependencyCruiserRules, type DependencyCruiserOptions } from "./dependency-cruiser.js";
+import { projectedEslint } from "./eslint.js";
+import { checkLayout, type Violation } from "./layout.js";
+
+export interface CheckOptions extends DependencyCruiserOptions {}
+
+export interface CheckReport {
+  readonly violations: readonly Violation[];
+  /** Files each tool looked at — a check that saw nothing proves nothing. */
+  readonly checked: { readonly dependencyCruiser: number; readonly eslint: number };
+}
+
+/**
+ * Run every architecture check on a project: layout and layer tsconfigs, import boundaries
+ * (dependency-cruiser) and code rules (ESLint). Uses projected's own rule sets, never the
+ * project's local config files, so the result cannot be weakened from inside the project.
+ *
+ * A check that inspects zero files is reported as a violation: several of these tools pass
+ * silently when misconfigured, and a green run that checked nothing is the worst outcome.
+ */
+export async function checkArchitecture(root: string, options: CheckOptions = {}): Promise<CheckReport> {
+  const violations: Violation[] = [...checkLayout(root)];
+  if (!existsSync(join(root, "src"))) {
+    return { violations, checked: { dependencyCruiser: 0, eslint: 0 } };
+  }
+
+  const comments = new Map(dependencyCruiserRules(options).map((rule) => [rule.name, rule.comment ?? ""]));
+  const config = dependencyCruiserConfig(options);
+  const previous = process.cwd();
+  let cruised: ICruiseResult;
+  try {
+    // dependency-cruiser resolves paths against the working directory.
+    process.chdir(root);
+    const { options: cruiseOptions = {} } = config;
+    const { tsConfig: _tsConfig, ...rest } = cruiseOptions;
+    const result = await cruise(
+      ["src"],
+      { ...rest, ruleSet: { forbidden: config.forbidden ?? [] }, validate: true, outputType: "json" },
+      { extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] } },
+    );
+    cruised = (typeof result.output === "string" ? JSON.parse(result.output) : result.output) as ICruiseResult;
+  } finally {
+    process.chdir(previous);
+  }
+  for (const violation of cruised.summary.violations) {
+    violations.push({
+      tool: "dependency-cruiser",
+      rule: violation.rule.name,
+      file: violation.from,
+      message: `imports ${violation.unresolvedTo ?? violation.to}: ${comments.get(violation.rule.name) ?? ""}`.trim(),
+    });
+  }
+  const cruisedFiles = cruised.modules.filter((module) => module.source.startsWith("src/")).length;
+
+  const eslint = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: projectedEslint() });
+  const results = await eslint.lintFiles(["src/**/*.{ts,mts,cts,tsx}"]);
+  for (const result of results) {
+    for (const message of result.messages) {
+      violations.push({
+        tool: "eslint",
+        rule: message.ruleId ?? (message.fatal ? "parse-error" : "inline-config"),
+        file: result.filePath.startsWith(root) ? result.filePath.slice(root.length + 1) : result.filePath,
+        line: message.line,
+        message: message.message,
+      });
+    }
+  }
+
+  const checked = { dependencyCruiser: cruisedFiles, eslint: results.length };
+  if (checked.dependencyCruiser === 0 || checked.eslint === 0) {
+    violations.push({
+      tool: checked.dependencyCruiser === 0 ? "dependency-cruiser" : "eslint",
+      rule: "checked-nothing",
+      file: "src",
+      message: "The check inspected no source files, so it proves nothing. Is src/ empty or excluded?",
+    });
+  }
+  return { violations, checked };
+}
+
+/** Human-readable report, one violation per line, grouped by file. */
+export function formatViolations(violations: readonly Violation[]): string {
+  return [...violations]
+    .sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0))
+    .map((v) => `${v.file}${v.line === undefined ? "" : `:${v.line}`}  [${v.tool}/${v.rule}]  ${v.message}`)
+    .join("\n");
+}

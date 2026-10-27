@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "//": "Like the domain, the application layer compiles without DOM or Node types: it reaches the world through ports.",
+  "extends": "./base.json"
+}

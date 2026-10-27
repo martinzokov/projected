@@ -39,6 +39,18 @@
     },
     {
       "path": "packages/runtime/test"
+    },
+    {
+      "path": "packages/architecture"
+    },
+    {
+      "path": "packages/architecture/test"
+    },
+    {
+      "path": "packages/cli"
+    },
+    {
+      "path": "packages/cli/test"
     }
   ]
 }

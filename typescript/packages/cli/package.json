@@ -1,0 +1,25 @@
+{
+  "name": "@projected/cli",
+  "version": "0.1.0",
+  "description": "The projected command line: architecture checks, OpenAPI generation and contract immutability locks.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "projected": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@projected/application": "workspace:*",
+    "@projected/architecture": "workspace:*",
+    "@projected/http": "workspace:*",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  }
+}

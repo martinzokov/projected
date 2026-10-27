@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "//": "The domain compiles against the ECMAScript library only: no DOM, no Node. fetch, console, timers and node:* do not exist here.",
+  "extends": "./base.json"
+}
