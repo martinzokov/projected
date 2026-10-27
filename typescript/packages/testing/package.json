@@ -1,0 +1,21 @@
+{
+  "name": "@projected/testing",
+  "version": "0.1.0",
+  "description": "Test helpers for projected: given/when/then for decisions, deterministic clocks and ids, and the EventStore conformance suite.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@projected/application": "workspace:*"
+  },
+  "peerDependencies": {
+    "vitest": ">=3"
+  }
+}

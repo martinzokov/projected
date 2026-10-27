@@ -1,0 +1,22 @@
+{
+  "name": "@projected/runtime",
+  "version": "0.1.0",
+  "description": "Default infrastructure for projected's framework ports: system clock, UUIDs and background event-handler polling.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@projected/application": "workspace:*"
+  },
+  "devDependencies": {
+    "@projected/event-store-memory": "workspace:*",
+    "@projected/testing": "workspace:*"
+  }
+}

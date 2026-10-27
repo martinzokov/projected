@@ -1,0 +1,27 @@
+{
+  "name": "@projected/application",
+  "version": "0.1.0",
+  "description": "Application layer for projected: CQRS contracts, handlers, ports and the transport-neutral dispatcher. Zero I/O.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "dependencies": {
+    "@projected/domain": "workspace:*",
+    "better-result": "^3.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@projected/event-store-memory": "workspace:*",
+    "@projected/testing": "workspace:*"
+  }
+}

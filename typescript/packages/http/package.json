@@ -1,0 +1,28 @@
+{
+  "name": "@projected/http",
+  "version": "0.1.0",
+  "description": "HTTP adapters for projected: business-operation endpoints and OpenAPI derived from contracts, typed clients, and a Result-based HTTP client.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "dependencies": {
+    "@projected/application": "workspace:*",
+    "better-result": "^3.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@projected/event-store-memory": "workspace:*",
+    "@projected/testing": "workspace:*",
+    "@seriousme/openapi-schema-validator": "^2.11.0"
+  }
+}

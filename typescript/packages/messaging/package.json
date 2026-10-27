@@ -1,0 +1,24 @@
+{
+  "name": "@projected/messaging",
+  "version": "0.1.0",
+  "description": "Asynchronous messaging adapters for projected: queued commands, an event relay (the event store is the outbox) and consumers, over a pluggable transport.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "@projected/application": "workspace:*",
+    "better-result": "^3.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@projected/event-store-memory": "workspace:*",
+    "@projected/testing": "workspace:*"
+  }
+}

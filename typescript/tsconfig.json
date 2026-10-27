@@ -1,0 +1,44 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/domain"
+    },
+    {
+      "path": "packages/domain/test"
+    },
+    {
+      "path": "packages/application"
+    },
+    {
+      "path": "packages/application/test"
+    },
+    {
+      "path": "packages/testing"
+    },
+    {
+      "path": "packages/event-store-memory"
+    },
+    {
+      "path": "packages/event-store-memory/test"
+    },
+    {
+      "path": "packages/http"
+    },
+    {
+      "path": "packages/http/test"
+    },
+    {
+      "path": "packages/messaging"
+    },
+    {
+      "path": "packages/messaging/test"
+    },
+    {
+      "path": "packages/runtime"
+    },
+    {
+      "path": "packages/runtime/test"
+    }
+  ]
+}
