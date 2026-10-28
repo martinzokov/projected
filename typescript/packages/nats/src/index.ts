@@ -8,7 +8,7 @@
  * duplicate window.
  */
 import { DependencyUnavailable, Result } from "@projected/application";
-import { deadLetterTopic, type Disposition, type MessageTransport, type Subscription } from "@projected/messaging";
+import { DEAD_LETTER_REASON_HEADER, REPLAY_HEADER, deadLetterTopic, type Disposition, type MessageTransport, type Subscription } from "@projected/messaging";
 import { AckPolicy, DeliverPolicy, jetstream, jetstreamManager, type JsMsg } from "@nats-io/jetstream";
 import { connect, headers as natsHeaders, nanos, type NatsConnection } from "@nats-io/transport-node";
 
@@ -37,7 +37,6 @@ export interface NatsTransportOptions {
 
 const MESSAGE_ID = "projected-message-id";
 const KEY = "projected-key";
-const DEAD_LETTER_REASON = "projected-dead-letter-reason";
 /** NATS consumer names may not contain `.`, `*`, `>` or whitespace. */
 const consumerName = (group: string, topic: string) => `${group}__${topic}`.replace(/[^A-Za-z0-9_-]/g, "_");
 
@@ -87,7 +86,9 @@ export function natsTransport(options: NatsTransportOptions): MessageTransport &
     const nc = await connection();
     const h = natsHeaders();
     for (const [name, value] of Object.entries(headerValues)) h.set(name, value);
-    await jetstream(nc).publish(subjectOf(topic), body, { msgID: id, headers: h });
+    // JetStream drops a second publish of one msgID: a deliberate replay must be told apart.
+    const replay = headerValues[REPLAY_HEADER];
+    await jetstream(nc).publish(subjectOf(topic), body, { msgID: replay === undefined ? id : `${id}:replay:${replay}`, headers: h });
   };
 
   const subscriptions = new Set<Subscription>();
@@ -161,7 +162,7 @@ export function natsTransport(options: NatsTransportOptions): MessageTransport &
         try {
           await send(deadLetterTopic(topic), `${id}:dead-letter`, raw.data, {
             ...headerValues,
-            [DEAD_LETTER_REASON]: disposition === "dead-letter" ? "rejected" : `failed ${maxAttempts} deliveries`,
+            [DEAD_LETTER_REASON_HEADER]: disposition === "dead-letter" ? "rejected" : `failed ${maxAttempts} deliveries`,
           });
           raw.term(disposition);
         } catch (error) {

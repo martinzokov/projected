@@ -25,5 +25,6 @@ export {
   operationId,
   operationPath,
   problemForDispatchError,
+  problemForOperateError,
   type Problem,
 } from "./protocol.js";

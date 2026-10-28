@@ -5,6 +5,7 @@ type Spec = Parameters<Validator["validate"]>[0];
 import {
   DependencyFailure,
   DependencyUnavailable,
+  OPERATE,
   Result,
   createApplication,
   defineCommand,
@@ -19,7 +20,7 @@ import {
 } from "@projected/application";
 import { HttpStatusError, httpClient, httpHandler, httpService, openApiDocument, type FetchHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
-import { sequentialIds } from "@projected/testing";
+import { principal, sequentialIds, tokenAuthenticator } from "@projected/testing";
 
 class BookAlreadyBorrowed extends defineError("BookAlreadyBorrowed", {
   schema: z.object({ isbn: z.string() }),
@@ -253,6 +254,32 @@ describe("httpHandler", () => {
       body: { status: "unready", checks: [{ name: "postgres", status: "down", message: "postgres: connection refused" }] },
     });
     expect(whenDraining).toMatchObject({ status: 503, body: { status: "draining" } });
+  });
+
+  it("runs operator tasks over POST /operate/{task}, for operators only", async () => {
+    const h = httpHandler(libraryApp(), {
+      authenticator: tokenAuthenticator({ "operator-token": principal("u-ops", [OPERATE]), "member-token": principal("u-member") }),
+    });
+    const operate = async (task: string, token?: string) => {
+      const response = await h(
+        new Request(`http://library.test/operate/${task}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
+          body: "{}",
+        }),
+      );
+      return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+    };
+
+    const byOperator = await operate("backlog", "operator-token");
+    const byMember = await operate("backlog", "member-token");
+    const anonymous = await operate("backlog");
+    const unknown = await operate("defragment", "operator-token");
+
+    expect(byOperator).toEqual({ status: 200, body: { status: "ok", value: { handlers: [] } } });
+    expect(byMember).toMatchObject({ status: 403, body: { type: "urn:projected:problem:forbidden" } });
+    expect(anonymous).toMatchObject({ status: 401, body: { type: "urn:projected:problem:unauthenticated" } });
+    expect(unknown).toMatchObject({ status: 404, body: { type: "urn:projected:problem:unknown-task" } });
   });
 });
 

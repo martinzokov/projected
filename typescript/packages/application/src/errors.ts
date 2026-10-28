@@ -96,6 +96,12 @@ export class IdempotencyKeyReused extends TaggedError("IdempotencyKeyReused")<{
   message: string;
 }> {}
 
+/** No operator task has this name. The `list-tasks` task names the ones there are. */
+export class UnknownTask extends TaggedError("UnknownTask")<{
+  task: string;
+  message: string;
+}> {}
+
 export type AccessError = Unauthenticated | Forbidden;
 export type IdempotencyError = RequestInProgress | IdempotencyKeyReused;
 
@@ -106,6 +112,9 @@ export type DispatchError =
   | AccessError
   | IdempotencyError
   | InfrastructureError;
+
+/** Why an operator task did not run to completion. */
+export type OperateError = UnknownTask | InvalidInput | OperationDefect | AccessError | InfrastructureError;
 
 export function isDispatchError(value: unknown): value is DispatchError {
   return (

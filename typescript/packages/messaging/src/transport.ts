@@ -66,6 +66,16 @@ export interface SubscribeOptions {
 /** Name of the topic that receives a topic's dead letters. The same convention on every transport. */
 export const deadLetterTopic = (topic: string) => `${topic}.dead-letter`;
 
+/** Header on a dead letter saying why it was dead-lettered. */
+export const DEAD_LETTER_REASON_HEADER = "projected-dead-letter-reason";
+
+/**
+ * Header on a message published again on purpose — by a dead-letter replay — under the id it had.
+ * A broker that drops repeated publishes of one id (NATS JetStream's deduplication) must count
+ * each replay as a new publish; consumers still see the original id.
+ */
+export const REPLAY_HEADER = "projected-replay";
+
 /** An in-memory transport with explicit delivery, for tests and single-process development. */
 export interface InMemoryTransport extends MessageTransport {
   /** Deliver queued messages (and their retries) until none are left. Returns the number of deliveries. */
@@ -84,8 +94,9 @@ export interface InMemoryTransportOptions {
 /**
  * Create an {@link InMemoryTransport}. Each consumer group receives every message; subscriptions
  * in the same group take turns. Nothing is delivered until {@link InMemoryTransport.drain} is
- * called, which keeps tests deterministic. Not durable: only groups subscribed at publish time
- * receive a message.
+ * called, which keeps tests deterministic. Durable like a broker, within the process: a group
+ * that subscribes for the first time receives every message published to the topic before, and
+ * one whose subscriptions all closed receives what arrived meanwhile when it subscribes again.
  */
 export function inMemoryTransport(options: InMemoryTransportOptions = {}): InMemoryTransport {
   const maxAttempts = options.maxAttempts ?? 3;
@@ -94,8 +105,13 @@ export function inMemoryTransport(options: InMemoryTransportOptions = {}): InMem
   const queue: Array<{ message: Message; group: string }> = [];
   const published: Message[] = [];
   const deadLetters: Message[] = [];
+  // Every message per topic, for groups that join later; and per group, what arrived while none of its members listened.
+  const log = new Map<string, Message[]>();
+  const parked = new Map<string, Array<{ message: Message; group: string }>>();
+  const parkingOf = (topic: string, group: string) => `${topic}\u0000${group}`;
 
   const enqueue = (message: Message) => {
+    log.set(message.topic, [...(log.get(message.topic) ?? []), message]);
     for (const group of groups.get(message.topic)?.keys() ?? []) queue.push({ message, group });
   };
   const handlerFor = (topic: string, group: string): Handler | undefined => {
@@ -130,10 +146,14 @@ export function inMemoryTransport(options: InMemoryTransportOptions = {}): InMem
     subscribe: async (topic, handler, subscribeOptions = {}) => {
       const group = subscribeOptions.group ?? "default";
       const topicGroups = groups.get(topic) ?? new Map<string, { handlers: Handler[]; next: number }>();
+      const joining = !topicGroups.has(group);
       const members = topicGroups.get(group) ?? { handlers: [], next: 0 };
       members.handlers.push(handler);
       topicGroups.set(group, members);
       groups.set(topic, topicGroups);
+      if (joining) for (const message of log.get(topic) ?? []) queue.push({ message, group });
+      queue.push(...(parked.get(parkingOf(topic, group)) ?? []));
+      parked.delete(parkingOf(topic, group));
       return {
         close: async () => {
           members.handlers = members.handlers.filter((candidate) => candidate !== handler);
@@ -145,7 +165,11 @@ export function inMemoryTransport(options: InMemoryTransportOptions = {}): InMem
       for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
         const { message, group } = next;
         const handler = handlerFor(message.topic, group);
-        if (handler === undefined) continue;
+        if (handler === undefined) {
+          const key = parkingOf(message.topic, group);
+          parked.set(key, [...(parked.get(key) ?? []), next]);
+          continue;
+        }
         deliveries++;
         const disposition = await handler(message).catch((): Disposition => "retry");
         if (disposition === "dead-letter") deadLetter(message);

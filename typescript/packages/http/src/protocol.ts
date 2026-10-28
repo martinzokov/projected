@@ -1,4 +1,4 @@
-import type { DispatchError, OperationKind, ValidationIssue } from "@projected/application";
+import type { DispatchError, OperateError, OperationKind, ValidationIssue } from "@projected/application";
 
 /**
  * The HTTP binding of the projected protocol (see `spec/protocol.md`).
@@ -47,6 +47,7 @@ export const PROBLEM_TYPES = {
   malformedRequest: "urn:projected:problem:malformed-request",
   payloadTooLarge: "urn:projected:problem:payload-too-large",
   unknownOperation: "urn:projected:problem:unknown-operation",
+  unknownTask: "urn:projected:problem:unknown-task",
   unauthenticated: "urn:projected:problem:unauthenticated",
   forbidden: "urn:projected:problem:forbidden",
   requestInProgress: "urn:projected:problem:request-in-progress",
@@ -87,4 +88,11 @@ export function problemForDispatchError(error: DispatchError): Problem {
       // Defects are bugs: say nothing about internals.
       return problem(PROBLEM_TYPES.internalError, "Internal error", 500);
   }
+}
+
+/** The protocol-level response for an operator task that did not run to completion. */
+export function problemForOperateError(error: OperateError): Problem {
+  return error._tag === "UnknownTask"
+    ? problem(PROBLEM_TYPES.unknownTask, "Unknown operator task", 404, error.message)
+    : problemForDispatchError(error);
 }

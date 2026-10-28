@@ -3,6 +3,8 @@
  * `src/infrastructure/**`.
  */
 export {
+  DEAD_LETTER_REASON_HEADER,
+  REPLAY_HEADER,
   deadLetterTopic,
   inMemoryTransport,
   type Disposition,
@@ -17,3 +19,4 @@ export {
 } from "./transport.js";
 export { CommandMessage, commandQueue, consumeCommands, type CommandQueueOptions, type ConsumeCommandsOptions } from "./commands.js";
 export { EventMessage, consumeEvents, eventRelay, type ConsumeEventsOptions, type EventRelayOptions } from "./events.js";
+export { deadLetterReplay, type DeadLetterReplayOptions } from "./replay.js";

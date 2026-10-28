@@ -1,4 +1,4 @@
-import { deadLetterTopic, type Disposition, type Message, type MessageTransport } from "@projected/messaging";
+import { REPLAY_HEADER, deadLetterReplay, deadLetterTopic, type Disposition, type Message, type MessageTransport } from "@projected/messaging";
 import { describe, expect, it } from "vitest";
 
 export interface TransportUnderTest {
@@ -164,6 +164,56 @@ export function messageTransportConformance(name: string, options: TransportConf
 
         expect(received[0]?.id).toBe("early");
       }, testTimeout);
+
+      it("replays a topic's dead letters to it, under their ids, once", async () => {
+        const under = await options.create();
+        const topic = freshTopic();
+        const received: Message[] = [];
+        // Rejected until replayed: the fix has been deployed in between.
+        const subscription = await under.transport.subscribe(
+          topic,
+          collect(received, (message) => (message.headers[REPLAY_HEADER] === undefined ? "dead-letter" : "ack")),
+        );
+        (await under.transport.publish(topic, { id: "m-replay", body: { n: 1 } })).unwrap();
+        await until(() => received.length === 1, under, "the first delivery");
+        const replay = deadLetterReplay(under.transport, { topics: [topic], group: `replay-${topic}`, idleMs: Math.min(timeoutMs / 3, 5_000) });
+        const run = () => replay.run({ topic }, { metadata: { messageId: "op-1", correlationId: "op-1", causationId: undefined, idempotencyKey: undefined } });
+
+        let settled = false;
+        const first = run().finally(() => (settled = true));
+        while (!settled) {
+          await under.drain?.();
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        const replayed = await first;
+        await until(() => received.length === 2, under, "the replayed message");
+        const again = run();
+        await under.drain?.();
+        const replayedAgain = await again;
+        await subscription.close();
+
+        expect(replayed.isOk() && replayed.value).toEqual({ topic, replayed: 1 });
+        expect(received.map((message) => [message.id, message.body])).toEqual([
+          ["m-replay", { n: 1 }],
+          ["m-replay", { n: 1 }],
+        ]);
+        expect(replayedAgain.isOk() && replayedAgain.value).toEqual({ topic, replayed: 0 });
+      }, testTimeout * 2);
     }
+
+    it("delivers a message published again as a replay, though its id was published before", async () => {
+      const under = await options.create();
+      const topic = freshTopic();
+      const received: Message[] = [];
+      const subscription = await under.transport.subscribe(topic, collect(received));
+
+      (await under.transport.publish(topic, { id: "m-again", body: {} })).unwrap();
+      await until(() => received.length === 1, under, "the message");
+      (await under.transport.publish(topic, { id: "m-again", body: {}, headers: { [REPLAY_HEADER]: "replay-1" } })).unwrap();
+      await until(() => received.length === 2, under, "the replayed message");
+      await subscription.close();
+
+      expect(received.map((message) => message.id)).toEqual(["m-again", "m-again"]);
+    }, testTimeout);
   });
 }

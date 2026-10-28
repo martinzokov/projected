@@ -215,3 +215,27 @@ describe("retried enlistments", () => {
     expect(eventStore.all).toHaveLength(1);
   });
 });
+
+describe("operating the school", () => {
+  const bruce = { firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" };
+  const asOperator = { authorization: "Bearer operator-token" };
+
+  it("rebuilds the student directory from the student events", async () => {
+    const { post } = testSchool();
+    await post("/commands/enlist-student/version/1", bruce);
+
+    const rebuilt = await post("/operate/rebuild", { handler: "student-directory" }, asOperator);
+    const found = await post("/queries/enlisted-students-on-joining-date/version/1", { date: "2023-09-22" });
+
+    expect(rebuilt).toEqual({ status: 200, body: { status: "ok", value: { handler: "student-directory", handled: 1, position: 1 } } });
+    expect(found.body).toMatchObject({ value: { students: [{ studentId: "student-1", lastname: "Wayne" }] } });
+  });
+
+  it("keeps operator tasks from staff who only manage students", async () => {
+    const { post } = testSchool();
+
+    const refused = await post("/operate/backlog", {});
+
+    expect(refused).toMatchObject({ status: 403, body: { type: "urn:projected:problem:forbidden" } });
+  });
+});

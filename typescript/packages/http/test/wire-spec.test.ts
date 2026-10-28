@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
-import { DependencyUnavailable, Result, createApplication, defineCommand, defineContracts, defineError, z } from "@projected/application";
+import { DependencyUnavailable, OPERATE, Result, createApplication, defineCommand, defineContracts, defineError, z } from "@projected/application";
 import { httpHandler } from "@projected/http";
 import { inMemoryIdempotencyStore } from "@projected/store-memory";
 import { principal, sequentialIds, tokenAuthenticator } from "@projected/testing";
@@ -42,7 +42,7 @@ const handler = httpHandler(
       "expel-member@1": () => Result.ok({}),
     },
   }),
-  { authenticator: tokenAuthenticator({ member: principal("u-member") }) },
+  { authenticator: tokenAuthenticator({ member: principal("u-member"), operator: principal("u-ops", [OPERATE]) }) },
 );
 const post = async (path: string, body: unknown, headers: Record<string, string> = {}) =>
   (
@@ -106,5 +106,14 @@ describe("HTTP binding conforms to spec/wire.schema.json", () => {
 
     expect(conforms("HealthReport", report)).toEqual([]);
     expect(conforms("HealthReport", { status: "ready", checks: [] })).toEqual([]);
+  });
+
+  it("for operator task outcomes and their problems", async () => {
+    const operate = (task: string, token: string) =>
+      handler(new Request(`http://club.test/operate/${task}`, { method: "POST", headers: { authorization: `Bearer ${token}` } })).then((r) => r.json());
+
+    expect(conforms("OperationResult", await operate("list-tasks", "operator"))).toEqual([]);
+    expect(conforms("ProblemDetails", await operate("defragment", "operator"))).toEqual([]);
+    expect(conforms("ProblemDetails", await operate("list-tasks", "member"))).toEqual([]);
   });
 });

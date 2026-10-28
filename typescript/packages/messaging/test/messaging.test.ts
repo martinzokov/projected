@@ -152,5 +152,5 @@ messageTransportConformance("in-memory", {
     return { transport, drain: () => transport.drain() };
   },
   maxAttempts: 3,
-  durable: false,
+  durable: true,
 });

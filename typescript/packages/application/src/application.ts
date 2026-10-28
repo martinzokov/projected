@@ -1,4 +1,4 @@
-import { Result, isPanic, isTaggedError, panic, type BusinessError } from "@projected/domain";
+import { Result, isPanic, isTaggedError, panic, z, type BusinessError } from "@projected/domain";
 import type {
   Access,
   AnyContracts,
@@ -17,12 +17,15 @@ import {
   RequestInProgress,
   Unauthenticated,
   UnknownOperation,
+  UnknownTask,
   isInfrastructureError,
   type DispatchError,
   type InfrastructureError,
+  type OperateError,
 } from "./errors.js";
 import { catchUp, type CatchUpReport, type EventHandler } from "./event-handler.js";
 import { canonicalJson, sha256 } from "./fingerprint.js";
+import { OPERATE, defineOperatorTask, type OperatorTask } from "./operator.js";
 import type {
   CheckpointStore,
   EventLog,
@@ -110,6 +113,11 @@ export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
   readonly onEventHandlingError?: (error: InfrastructureError) => void;
   /** What the service cannot serve without, asked by {@link Application.health}. */
   readonly readiness?: readonly ReadinessCheck[];
+  /**
+   * Maintenance tasks beyond the built-in `list-tasks`, `backlog` and `rebuild` — e.g.
+   * `deadLetterReplay(transport, ...)` from `@projected/messaging`. Run with {@link Application.operate}.
+   */
+  readonly operatorTasks?: readonly OperatorTask[];
 };
 
 /** Whether the service should be sent traffic, and why not. */
@@ -152,6 +160,11 @@ export interface Application<C extends AnyContracts = AnyContracts> {
   drain(): Promise<void>;
   /** For each event handler, its checkpoint and the oldest event it has not processed yet. */
   backlog(): Promise<Result<readonly EventHandlerBacklog[], InfrastructureError>>;
+  /**
+   * Run an operator task — `list-tasks`, `backlog`, `rebuild` or one from `operatorTasks` — for a
+   * principal holding the `projected:operate` permission. Transports call it (`POST /operate/{name}`).
+   */
+  operate(task: string, input: unknown, metadata?: Partial<Metadata>): Promise<Result<unknown, OperateError>>;
 }
 
 /** Why a principal may not run an operation under `access`, or `undefined` when it may. */
@@ -376,6 +389,101 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
     return Result.ok(backlogs);
   };
 
+  const noSuchHandler = (name: string) => {
+    const names = eventHandling?.handlers.map((handler) => handler.name) ?? [];
+    const message =
+      names.length === 0 ? "This service has no event handlers" : `No event handler ${name}; there are: ${names.join(", ")}`;
+    return new InvalidInput({ issues: [{ path: ["handler"], message, code: undefined }], message });
+  };
+
+  const builtInTasks: OperatorTask[] = [
+    defineOperatorTask({
+      name: "list-tasks",
+      description: "The operator tasks this service offers, with the input each takes.",
+      input: z.object({}),
+      run: () =>
+        Result.ok({
+          tasks: [...tasks.values()].map((task) => ({
+            name: task.name,
+            description: task.description,
+            input: z.toJSONSchema(task.input, { io: "input", unrepresentable: "any" }),
+          })),
+        }),
+    }),
+    defineOperatorTask({
+      name: "backlog",
+      description: "Each event handler's checkpoint, and the oldest event it has yet to process.",
+      input: z.object({}),
+      run: async () => (await backlog()).map((handlers) => ({ handlers })),
+    }),
+    defineOperatorTask({
+      name: "rebuild",
+      description:
+        "Replay every event to one event handler from the start, after its reset if it has one: rebuilds a read model. " +
+        "Stop the other instances' event handling first, so none moves the checkpoint meanwhile.",
+      input: z.object({ handler: z.string() }),
+      run: async ({ handler: name }) => {
+        const handler = eventHandling?.handlers.find((candidate) => candidate.name === name);
+        if (eventHandling === undefined || handler === undefined) return Result.err(noSuchHandler(name));
+        // In the catch-up queue, so no catch-up in this process reads the checkpoint mid-reset.
+        const rebuilt = catchUpQueue.then(async (): Promise<Result<CatchUpReport, InfrastructureError>> => {
+          if (handler.reset !== undefined) {
+            const reset = await handler.reset();
+            if (reset.isErr()) return Result.err(reset.error);
+          }
+          const rewound = await eventHandling.checkpoints.save(handler.name, 0);
+          if (rewound.isErr()) return Result.err(rewound.error);
+          return catchUp(handler, eventHandling.store, eventHandling.checkpoints, { telemetry });
+        });
+        catchUpQueue = rebuilt.catch(() => undefined);
+        return rebuilt;
+      },
+    }),
+  ];
+  const tasks = new Map<string, OperatorTask>();
+  for (const task of [...builtInTasks, ...(options.operatorTasks ?? [])]) {
+    if (tasks.has(task.name)) panic(`createApplication: two operator tasks are named ${task.name}`);
+    tasks.set(task.name, task);
+  }
+
+  const operate = async (name: string, input: unknown, given?: Partial<Metadata>): Promise<Result<unknown, OperateError>> => {
+    const task = tasks.get(name);
+    if (task === undefined) return Result.err(new UnknownTask({ task: name, message: `No operator task ${name}; list-tasks names the ones there are` }));
+    const operation = `task ${name}`;
+    return telemetry.span(
+      operation,
+      { kind: "internal", attributes: { "projected.service": contracts.name, "projected.task": name, "enduser.id": given?.principal?.id } },
+      async (span) => {
+        const outcome = await (async (): Promise<Result<unknown, OperateError>> => {
+          const denied = checkAccess(operation, { permissions: [OPERATE] }, given?.principal);
+          if (denied !== undefined) return Result.err(denied);
+          const parsed = task.input.safeParse(input);
+          if (!parsed.success) {
+            return Result.err(new InvalidInput({ issues: toValidationIssues(parsed.error.issues), message: `Invalid input for ${operation}` }));
+          }
+          try {
+            return await task.run(parsed.data, { metadata: completeMetadata(given) });
+          } catch (cause) {
+            const reason = rootReason(cause);
+            const error = new OperationDefect({ operation, message: `task threw${reason === undefined ? "" : `: ${reason}`}`, cause });
+            options.onDefect?.(error);
+            return Result.err(error);
+          }
+        })();
+        const result = outcome.isOk() ? "ok" : "failed";
+        if (outcome.isErr()) span.fail(outcome.error.message);
+        span.setAttributes({ "projected.outcome": result, "projected.error.type": outcome.isErr() ? outcome.error._tag : undefined });
+        telemetry.count("projected.operator_tasks", 1, {
+          "projected.service": contracts.name,
+          "projected.task": name,
+          "projected.outcome": result,
+          "projected.error.type": outcome.isErr() ? outcome.error._tag : undefined,
+        });
+        return outcome;
+      },
+    );
+  };
+
   const dispatch = (request: OperationRequest): Promise<Result<OperationResult, DispatchError>> => {
     const contract = contracts.find(request.kind, request.type, request.version);
     const handler = contract && handlers.get(`${contract.kind}:${contract.key}`);
@@ -464,5 +572,6 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
     health,
     drain,
     backlog,
+    operate: (task, input, metadata) => track(operate(task, input, metadata)),
   };
 }

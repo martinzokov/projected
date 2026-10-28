@@ -8,7 +8,7 @@ import type {
   Principal,
 } from "@projected/application";
 import { openApiDocument, type OpenApiOptions } from "./openapi.js";
-import { HEADERS, PLURAL, PROBLEM_TYPES, problem, problemForDispatchError, type Problem } from "./protocol.js";
+import { HEADERS, PLURAL, PROBLEM_TYPES, problem, problemForDispatchError, problemForOperateError, type Problem } from "./protocol.js";
 
 /** A web-standard request handler: runs on Node (via {@link serve}), Bun, Deno and edge runtimes. */
 export type FetchHandler = (request: Request) => Promise<Response>;
@@ -47,6 +47,7 @@ const json = (body: unknown, status: number, headers: Record<string, string> = {
 
 const ROUTE = /^\/(commands|queries)\/([a-z0-9-]+)\/version\/([1-9][0-9]*)$/;
 const BATCH = /^\/(commands|queries)$/;
+const TASK = /^\/operate\/([a-z0-9-]+)$/;
 const KIND: Record<string, OperationKind> = { commands: "command", queries: "query" };
 
 /**
@@ -59,6 +60,7 @@ const KIND: Record<string, OperationKind> = { commands: "command", queries: "que
  * - `GET /health/live` (and `GET /health`) — liveness: the process answers
  * - `GET /health/ready` — readiness: the application's {@link Application.health} report, 503
  *   while a dependency is down or the service is draining
+ * - `POST /operate/{task}` — run an operator task, for principals with `projected:operate`
  */
 export function httpHandler<C extends AnyContracts>(app: Application<C>, options: HttpHandlerOptions = {}): FetchHandler {
   const basePath = (options.basePath ?? "").replace(/\/+$/, "");
@@ -116,16 +118,33 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
     return json(response, response.status, { ...headers, ...extra });
   };
 
-  const handleOperation = async (request: Request, single: RegExpExecArray | null, batch: RegExpExecArray | null) => {
+  /** The request's principal, or the response when it cannot be established. */
+  const authenticate = async (request: Request): Promise<{ ok: true; principal: Principal | undefined } | { ok: false; response: Response }> => {
+    if (options.authenticator === undefined) return { ok: true, principal: undefined };
     const headers = Object.fromEntries([...request.headers].map(([name, value]) => [name.toLowerCase(), value]));
-    let principal: Principal | undefined;
-    if (options.authenticator !== undefined) {
-      const authenticated = await options.authenticator.authenticate({ headers });
-      if (authenticated.isErr()) {
-        return respondToProblem(problem(PROBLEM_TYPES.dependencyUnavailable, "Service temporarily unavailable", 503), {});
-      }
-      principal = authenticated.value;
-    }
+    const authenticated = await options.authenticator.authenticate({ headers });
+    return authenticated.isErr()
+      ? { ok: false, response: respondToProblem(problem(PROBLEM_TYPES.dependencyUnavailable, "Service temporarily unavailable", 503), {}) }
+      : { ok: true, principal: authenticated.value };
+  };
+
+  const handleTask = async (request: Request, task: string) => {
+    const authenticated = await authenticate(request);
+    if (!authenticated.ok) return authenticated.response;
+    const metadata = metadataFrom(request, authenticated.principal);
+    const body = await readJson(request);
+    if (!body.ok) return json(body.problem, body.problem.status, traceHeaders(metadata));
+    const outcome = await app.operate(task, body.body, metadata);
+    return outcome.match({
+      ok: (value) => json({ status: "ok", value }, 200, traceHeaders(metadata)),
+      err: (error) => respondToProblem(problemForOperateError(error), traceHeaders(metadata)),
+    });
+  };
+
+  const handleOperation = async (request: Request, single: RegExpExecArray | null, batch: RegExpExecArray | null) => {
+    const authenticated = await authenticate(request);
+    if (!authenticated.ok) return authenticated.response;
+    const principal = authenticated.principal;
     const metadata = metadataFrom(request, principal);
     const body = await readJson(request);
     if (!body.ok) return json(body.problem, body.problem.status, traceHeaders(metadata));
@@ -211,18 +230,19 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
 
     const single = ROUTE.exec(path);
     const batch = single === null ? BATCH.exec(path) : null;
-    if (single === null && batch === null) return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
+    const task = single === null && batch === null ? TASK.exec(path) : null;
+    if (single === null && batch === null && task === null) return json(problem(PROBLEM_TYPES.notFound, "Not found", 404), 404);
     if (request.method !== "POST") return methodNotAllowed("POST");
 
     const carrier = Object.fromEntries([...request.headers].map(([name, value]) => [name.toLowerCase(), value]));
-    const route = single === null ? `/${batch?.[1] ?? ""}` : `/${single[1] ?? ""}/{type}/version/{version}`;
+    const route = task !== null ? "/operate/{task}" : single === null ? `/${batch?.[1] ?? ""}` : `/${single[1] ?? ""}/{type}/version/{version}`;
     return telemetry.continueFrom(carrier, () =>
       telemetry.span(
         `POST ${route}`,
         { kind: "server", attributes: { "http.request.method": "POST", "http.route": route, "url.path": url.pathname } },
         async (span) => {
           const started = performance.now();
-          const response = await handleOperation(request, single, batch);
+          const response = task !== null ? await handleTask(request, task[1] ?? "") : await handleOperation(request, single, batch);
           span.setAttributes({ "http.response.status_code": response.status });
           if (response.status >= 500) span.fail(`HTTP ${response.status}`);
           // OpenTelemetry's semantic convention: seconds, by method, route and status.

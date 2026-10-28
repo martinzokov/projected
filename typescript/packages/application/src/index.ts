@@ -44,14 +44,17 @@ export {
   RequestInProgress,
   Unauthenticated,
   UnknownOperation,
+  UnknownTask,
   isDispatchError,
   isInfrastructureError,
   type AccessError,
   type DispatchError,
   type IdempotencyError,
   type InfrastructureError,
+  type OperateError,
   type ValidationIssue,
 } from "./errors.js";
+export { OPERATE, defineOperatorTask, type OperatorTask } from "./operator.js";
 export type {
   Authenticator,
   CheckpointStore,

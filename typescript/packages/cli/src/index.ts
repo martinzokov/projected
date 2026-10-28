@@ -21,3 +21,4 @@ export { renderCatalog } from "./docs/render.js";
 export { mutate, type MutationConfig } from "./mutate.js";
 export { newAggregate, newCommand, newEventHandler, newPort, newQuery, newService } from "./scaffold/generate.js";
 export { DEPENDENCY_VERSIONS } from "./scaffold/templates.js";
+export { operate, type OperateOptions } from "./operate.js";

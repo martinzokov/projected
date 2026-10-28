@@ -169,6 +169,7 @@ an event continue the trace that caused it.
 | `GET /openapi.json` | — | OpenAPI 3.1 document derived from the contracts |
 | `GET /health/live` (and `GET /health`) | — | `{ "status": "ok" }`: the process answers (§3.5) |
 | `GET /health/ready` | — | a health report: whether to send the service traffic (§3.5) |
+| `POST /operate/{task}` | the task's input | run an operator task (§3.6) |
 
 A service MAY mount all routes under a base path (`/api/commands/...`). Queries use `POST`
 because their input is a body, like a command's.
@@ -187,6 +188,7 @@ Request bodies MUST be `application/json`. An empty body MUST be treated as `{}`
 | principal lacks a permission | 403 | problem `forbidden` |
 | no such path | 404 | problem `not-found` |
 | no such operation or version | 404 | problem `unknown-operation` |
+| no such operator task | 404 | problem `unknown-task` |
 | wrong method | 405 | problem `method-not-allowed`, with `Allow` |
 | batch too large | 413 | problem `payload-too-large` |
 | body is not JSON media type | 415 | problem `unsupported-media-type` |
@@ -257,6 +259,31 @@ Both health routes are public and MUST NOT run any operation.
 A service that is shutting down MUST report `draining` from the moment it decides to stop, keep
 serving what it receives while load balancers notice, then stop accepting work and finish what
 is in flight before it exits.
+
+### 3.6 Operator tasks
+
+Maintenance on a live service — rebuilding a read model, replaying dead letters — runs as an
+operator task: `POST /operate/{task}` with the task's input as the body. Tasks are not
+operations: no contract describes them, they are not in the service's OpenAPI document, and no
+caller may depend on them.
+
+- Every task MUST require the `projected:operate` permission (§1.3): `401` for an anonymous
+  caller, `403` for one without it.
+- The input is validated (`400 invalid-input`); an unknown task is `404 unknown-task`.
+- The outcome is `200 { "status": "ok", "value": ... }`. A task has no business errors: it either
+  runs to completion or fails with a protocol problem.
+
+Every service offers:
+
+| Task | Input | Does |
+|---|---|---|
+| `list-tasks` | `{}` | names every task with its description and its input's JSON Schema |
+| `backlog` | `{}` | each event handler's checkpoint, and the oldest event it has yet to process |
+| `rebuild` | `{ "handler": name }` | resets the handler, rewinds its checkpoint to the start, and replays every event to it |
+
+A service that consumes from a broker SHOULD offer `replay-dead-letters`
+(`{ "topic": name }`): publish the topic's dead letters back to it under their original message
+ids, each once (§4.3).
 
 ---
 
@@ -334,6 +361,9 @@ redelivery and dead-lettering:
 - **Headers.** Message headers carry `traceparent`/`tracestate` and the message id.
 - **Readiness.** A binding MUST be able to tell, within a bounded time, whether its broker
   answers, so that a service is not reported ready (§3.5) while it cannot publish or consume.
+- **Replays.** A message published again on purpose — a dead-letter replay — keeps its message
+  id and carries a `projected-replay` header. A broker that drops repeated publishes of one id
+  MUST deliver a replay as a new message.
 
 The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing`) is the
 executable form of this section; Kafka and NATS JetStream bindings pass it.

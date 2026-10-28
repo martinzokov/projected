@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
 import { docs } from "./docs/commands.js";
 import { mutate } from "./mutate.js";
+import { operate } from "./operate.js";
 import { loadProject } from "./project.js";
 import { newAggregate, newCommand, newEventHandler, newPort, newQuery, newService } from "./scaffold/generate.js";
 import { vendorAdd, vendorCheck, vendorGenerate, vendorUpdate } from "./vendor/commands.js";
@@ -24,6 +25,10 @@ Commands:
                         a driven port returning Results, and an adapter for it
   new event-handler <name> --on <Event,...> [--port <Port>]
                         an event handler, registered in the composition root
+  operate [<task>] --url <service> [--input <json>] [--token <token>]
+                        run an operator task on a running service (rebuild, backlog,
+                        replay-dead-letters, ...); without a task, list them. The token
+                        (default PROJECTED_OPERATOR_TOKEN) needs projected:operate.
   check [--strict]      everything below, as CI runs it (no files are written);
                         --strict also fails on design-rule warnings
   arch [--strict]       layout, layer tsconfigs, import boundaries, code and design rules
@@ -74,6 +79,9 @@ export async function run(argv: readonly string[], print: (line: string) => void
         on: { type: "string" },
         operations: { type: "string" },
         adapter: { type: "string" },
+        url: { type: "string" },
+        input: { type: "string" },
+        token: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -93,6 +101,9 @@ export async function run(argv: readonly string[], print: (line: string) => void
     result.lines.forEach((line) => print(line));
     return result.ok ? 0 : 1;
   };
+  if (command === "operate") {
+    return finish(await operate(subcommand, { url: values.url, input: values.input, token: values.token }));
+  }
   if (command === "new" && subcommand === "service") {
     return finish(newService(values.root, target, { flavour: values.flavour, aggregate: values.aggregate }));
   }

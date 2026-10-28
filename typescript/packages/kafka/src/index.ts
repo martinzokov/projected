@@ -9,7 +9,7 @@
  * order. After `maxAttempts` it goes to `<topic>.dead-letter` and the partition continues.
  */
 import { DependencyUnavailable, Result } from "@projected/application";
-import { deadLetterTopic, type Disposition, type Message, type MessageTransport, type Subscription } from "@projected/messaging";
+import { DEAD_LETTER_REASON_HEADER, deadLetterTopic, type Disposition, type Message, type MessageTransport, type Subscription } from "@projected/messaging";
 import { Admin, Consumer, Producer, stringDeserializers, stringSerializers } from "@platformatic/kafka";
 
 export interface KafkaTransportOptions {
@@ -32,7 +32,6 @@ export interface KafkaTransportOptions {
 }
 
 const MESSAGE_ID = "projected-message-id";
-const DEAD_LETTER_REASON = "projected-dead-letter-reason";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** `work`, or a rejection once `ms` have passed without an answer. */
@@ -159,7 +158,7 @@ export function kafkaTransport(options: KafkaTransportOptions): MessageTransport
           if (disposition !== "ack") {
             const reason = disposition === "dead-letter" ? "rejected" : `failed ${maxAttempts} deliveries`;
             try {
-              await send(deadLetterTopic(topic), base.key ?? base.id, record.value, { ...headers, [DEAD_LETTER_REASON]: reason });
+              await send(deadLetterTopic(topic), base.key ?? base.id, record.value, { ...headers, [DEAD_LETTER_REASON_HEADER]: reason });
             } catch (error) {
               // Not committing keeps the message, so it is retried after a restart rather than lost.
               onError(error);

@@ -192,6 +192,7 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 | `projected vendor add <name> --spec <url\|file>` | generate a typed, Result-returning client for a third-party OpenAPI |
 | `projected vendor update <name>` | take a vendor's new spec (refuses breaking changes unless accepted) |
 | `projected mutate` | mutation-test the domain and use cases; lists the changes no test notices, fails below the threshold |
+| `projected operate [task] --url <service>` | run an operator task on a running service (`rebuild`, `backlog`, `replay-dead-letters`); needs a `projected:operate` token |
 | `tsc -b` | compile every layer; boundary violations are compile errors |
 
 Related skills: `projected-domain-modelling`, `projected-contracts`, `projected-integrations`,

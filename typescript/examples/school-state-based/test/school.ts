@@ -1,3 +1,4 @@
+import { OPERATE } from "@projected/application/state-based";
 import { httpHandler } from "@projected/http";
 import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryIdempotencyStore, inMemoryStateStore } from "@projected/store-memory/state-based";
 import { fixedClock, principal, sequentialIds, tokenAuthenticator } from "@projected/testing/state-based";
@@ -5,6 +6,7 @@ import { composeSchool } from "../src/infrastructure/config/school.js";
 
 export const registrar = principal("u-registrar", ["students:manage"]);
 export const teacher = principal("u-teacher");
+export const operator = principal("u-operator", [OPERATE]);
 
 /** The real composition, with deterministic time and ids and in-memory stores, served by the real HTTP handler. */
 export function testSchool() {
@@ -22,7 +24,7 @@ export function testSchool() {
   });
   const handler = httpHandler(app, {
     messageIds: sequentialIds("request").next,
-    authenticator: tokenAuthenticator({ "registrar-token": registrar, "teacher-token": teacher }),
+    authenticator: tokenAuthenticator({ "registrar-token": registrar, "teacher-token": teacher, "operator-token": operator }),
   });
   /** POST as the registrar unless other headers are given. */
   const post = async (path: string, body: unknown, headers: Record<string, string> = { authorization: "Bearer registrar-token" }) => {

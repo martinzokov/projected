@@ -36,12 +36,20 @@ export interface EventHandler {
   readonly eventTypes: readonly string[];
   handles(type: string): boolean;
   handle(recorded: RecordedEvent): Promise<Result<void, InfrastructureError>>;
+  /** Forget everything it has built, before a rebuild replays every event to it. */
+  reset?(): Promise<Result<void, InfrastructureError>>;
 }
 
 export interface DefineEventHandlerOptions<Events extends readonly AnyEventDefinition[]> {
   readonly name: string;
   readonly events: Events;
   readonly handle: EventHandlerFunctions<Events>;
+  /**
+   * Clear what the handler has built — a read model's documents — before the `rebuild` operator
+   * task replays every event to it. Without it, a rebuild replays over what is there, which is
+   * enough for a handler whose every effect is an idempotent upsert or delete.
+   */
+  readonly reset?: () => MaybePromise<Result<void, InfrastructureError>>;
 }
 
 /**
@@ -74,10 +82,12 @@ export function defineEventHandler<const Events extends readonly AnyEventDefinit
     if (typeof functions[type] !== "function") panic(`defineEventHandler("${options.name}"): no handler for ${type}`);
   }
 
+  const reset = options.reset;
   return {
     name: options.name,
     eventTypes: [...definitions.keys()],
     handles: (type) => definitions.has(type),
+    ...(reset === undefined ? {} : { reset: async () => reset() }),
     handle: async (recorded) => {
       const definition = definitions.get(recorded.type);
       const fn = functions[recorded.type];

@@ -1,6 +1,7 @@
 # Running a service
 
-What a projected service tells the platform it runs on, and how it stops without losing work.
+What a projected service tells the platform it runs on, how it stops without losing work, and
+how an operator maintains it while it runs.
 Everything here is wired in the school examples' `main.ts` and in what `projected new service`
 generates.
 
@@ -81,3 +82,49 @@ same as data: each handler's checkpoint and its oldest pending event.
 
 In the state-based flavour handlers read the outbox, so an event relay's lag is how long events
 wait in the outbox before they reach the broker.
+
+## Operator tasks
+
+Maintenance on a live service runs as an operator task: `POST /operate/{task}`, or from a shell,
+
+```sh
+export PROJECTED_OPERATOR_TOKEN=…        # a principal with projected:operate
+projected operate --url https://school.internal                       # list the tasks
+projected operate backlog --url https://school.internal
+projected operate rebuild --url https://school.internal --input '{"handler":"student-directory"}'
+```
+
+Every task requires the `projected:operate` permission — the school examples and generated
+services grant it to better-auth admins — and runs through the dispatcher's path: validated,
+traced as `task <name>`, counted in `projected.operator_tasks`, waited for by a drain. Tasks are
+not contracts: they are absent from the OpenAPI document and the contract lock.
+
+| Task | Input | Does |
+|---|---|---|
+| `list-tasks` | `{}` | every task, its description and its input |
+| `backlog` | `{}` | each event handler's checkpoint and oldest pending event — `app.backlog()` |
+| `rebuild` | `{ "handler": name }` | the handler's `reset`, if it has one, then its checkpoint back to 0 and every event replayed to it |
+| `replay-dead-letters` | `{ "topic": name }` | from `deadLetterReplay(transport, { topics })` in `@projected/messaging`: the topic's dead letters published back to it |
+
+**Rebuild** replays in the process's catch-up queue, so no catch-up there moves the checkpoint
+meanwhile; stop event handling on other instances first. Give a handler a `reset` when replaying
+over what it built is not enough — a read model whose rows a buggy version wrote:
+
+```ts
+// clear() is an operation you add to the read model's port for it
+defineEventHandler({ name: "student-directory", events: [...], handle: { ... }, reset: () => directory.clear() });
+```
+
+**Dead-letter replay** reads `<topic>.dead-letter` as its own consumer group, whose position the
+broker keeps, so each dead letter is replayed once; it finishes once none has arrived for a
+couple of seconds. Messages keep their ids: a dead-lettered command never completed, so its
+idempotency key is free and it runs again; a dead-lettered event reaches the consumers that
+failed it. Each carries a `projected-replay` header, which brokers that deduplicate by id (NATS
+JetStream) honour.
+
+```ts
+createApplication(contracts, { ..., operatorTasks: [deadLetterReplay(kafka, { topics: ["billing.commands"] })] });
+```
+
+A task of your own is `defineOperatorTask({ name, description, input, run })`, given to
+`createApplication({ operatorTasks })`.

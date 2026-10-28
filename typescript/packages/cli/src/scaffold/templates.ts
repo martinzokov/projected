@@ -254,7 +254,8 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
   };
 }
 `,
-    "src/infrastructure/config/main.ts": `import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes } from "@projected/auth-better-auth";
+    "src/infrastructure/config/main.ts": `import { OPERATE } from "@projected/application/${flavour}";
+import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, rolesOf } from "@projected/auth-better-auth";
 import { httpHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
@@ -269,8 +270,11 @@ const telemetry = openTelemetry();
 
 const app = compose${Name}({ ...infrastructure, clock, ids: randomIds(), telemetry, onDefect: (defect) => console.error("defect", defect) });
 
-// Signed-in users hold the permissions returned here, e.g. from better-auth roles (rolesOf(session)).
-const authenticator = betterAuthAuthenticator(infrastructure.auth, { permissions: () => [] });
+// Signed-in users hold the permissions returned here. Admins operate the service (\`projected operate\`);
+// add the permissions your operations require.
+const authenticator = betterAuthAuthenticator(infrastructure.auth, {
+  permissions: (session) => (rolesOf(session).includes("admin") ? [OPERATE] : []),
+});
 
 const server = await serve(
   httpHandler(app, {
