@@ -68,6 +68,9 @@ pnpm test:integration         # sets PROJECTED_TEST_DATABASE_URL, _KAFKA_BROKERS
 - **Compile-time guarantees are tested with `@ts-expect-error`** in the package tests (a missing
   handler, an undeclared error, a missing evolve handler, an incomplete state). Keep them when
   refactoring types.
+- **Templates are code.** What `projected new` writes (`packages/cli/src/scaffold/`) must compile,
+  pass `projected check --strict` and its own tests in both flavours; `scaffold.test.ts` grows a
+  service with every generator and runs all three. Change a template with the examples it mirrors.
 - **Generated artifacts are regenerated, never hand-edited:** `projected openapi`,
   `projected contracts --update` and `projected docs` in the examples, `projected vendor generate`
   for vendor clients.

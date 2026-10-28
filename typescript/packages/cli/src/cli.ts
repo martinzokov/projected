@@ -3,6 +3,7 @@ import { architecture, contractsLock, openapi, type CommandResult } from "./comm
 import { docs } from "./docs/commands.js";
 import { mutate } from "./mutate.js";
 import { loadProject } from "./project.js";
+import { newAggregate, newCommand, newEventHandler, newPort, newQuery, newService } from "./scaffold/generate.js";
 import { vendorAdd, vendorCheck, vendorGenerate, vendorUpdate } from "./vendor/commands.js";
 
 const USAGE = `projected — keep a projected app honest
@@ -10,6 +11,19 @@ const USAGE = `projected — keep a projected app honest
 Usage: projected <command> [--root <dir>] [options]
 
 Commands:
+  new service <dir> --flavour event-sourced|state-based --aggregate <name>
+                        a new service: layers, composition root, server, tests, and its
+                        first aggregate. The flavour is fixed from then on.
+  new aggregate <name>  an aggregate, with the property test its flavour requires
+  new command <type> --aggregate <name> --event <Event>
+                        a contract, its use case, a stub decision recording the event,
+                        tests, and the wiring (contracts list, composition root)
+  new query <type> --aggregate <name> | --port <Port>
+                        a contract and use case reading an aggregate or a read model
+  new port <Name> --operations <a,b> [--adapter <factory>]
+                        a driven port returning Results, and an adapter for it
+  new event-handler <name> --on <Event,...> [--port <Port>]
+                        an event handler, registered in the composition root
   check [--strict]      everything below, as CI runs it (no files are written);
                         --strict also fails on design-rule warnings
   arch [--strict]       layout, layer tsconfigs, import boundaries, code and design rules
@@ -53,6 +67,13 @@ export async function run(argv: readonly string[], print: (line: string) => void
         spec: { type: "string" },
         "accept-breaking": { type: "boolean", default: false },
         strict: { type: "boolean", default: false },
+        flavour: { type: "string" },
+        aggregate: { type: "string" },
+        event: { type: "string" },
+        port: { type: "string" },
+        on: { type: "string" },
+        operations: { type: "string" },
+        adapter: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -66,6 +87,14 @@ export async function run(argv: readonly string[], print: (line: string) => void
   if (values.help || command === undefined) {
     print(USAGE);
     return command === undefined && !values.help ? 2 : 0;
+  }
+
+  const finish = (result: CommandResult) => {
+    result.lines.forEach((line) => print(line));
+    return result.ok ? 0 : 1;
+  };
+  if (command === "new" && subcommand === "service") {
+    return finish(newService(values.root, target, { flavour: values.flavour, aggregate: values.aggregate }));
   }
 
   let project;
@@ -86,6 +115,20 @@ export async function run(argv: readonly string[], print: (line: string) => void
         () => docs(project, { check: true }),
       );
       break;
+    case "new": {
+      const generate = {
+        aggregate: () => newAggregate(project, target),
+        command: () => newCommand(project, target, { aggregate: values.aggregate, event: values.event }),
+        query: () => newQuery(project, target, { aggregate: values.aggregate, port: values.port }),
+        port: () => newPort(project, target, { operations: values.operations, adapter: values.adapter }),
+        "event-handler": () => newEventHandler(project, target, { on: values.on, port: values.port }),
+      }[subcommand ?? ""];
+      if (generate === undefined) {
+        print(`Unknown kind to create: ${subcommand ?? "(none)"} — service, aggregate, command, query, port or event-handler`);
+        return 2;
+      }
+      return finish(generate());
+    }
     case "docs":
       steps.push(() => docs(project, { check: values.check }));
       break;

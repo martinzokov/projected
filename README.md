@@ -94,6 +94,18 @@ docker compose up -d --wait # Postgres, Kafka, NATS
 pnpm test:integration       # every test, including the adapters against the real servers
 ```
 
+Start a service of your own — the generated code compiles, passes `projected check` and has
+tests from the first command. Inside the workspace it depends on the workspace's packages
+(elsewhere, on released versions of them):
+
+```sh
+cd typescript
+pnpm projected new service examples/billing --flavour state-based --aggregate invoice
+pnpm install && pnpm build
+cd examples/billing && pnpm openapi && pnpm lock && pnpm docs && pnpm check
+pnpm exec projected new command issue-invoice --aggregate invoice --event InvoiceIssued
+```
+
 Run an example service — in memory by default, or on real infrastructure:
 
 ```sh
@@ -122,7 +134,7 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling |
 | `@projected/testing` | tests | given/when/then, property-based tests from zod schemas (fast-check), fixed clock, sequential ids, test authenticator and telemetry, conformance suites for every store and transport |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |
-| `@projected/cli` | tooling | `projected check`, `arch`, `openapi`, `contracts`, `docs` (a service catalog with Mermaid diagrams, derived from the code), `vendor` (typed clients for third-party OpenAPI specs), `mutate` (mutation testing with Stryker) |
+| `@projected/cli` | tooling | `projected new` (a service, aggregates, commands, queries, ports and event handlers, wired and tested), `check`, `arch`, `openapi`, `contracts`, `docs` (a service catalog with Mermaid diagrams, derived from the code), `vendor` (typed clients for third-party OpenAPI specs), `mutate` (mutation testing with Stryker) |
 
 ## Skills for agents
 

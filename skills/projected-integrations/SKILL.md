@@ -28,7 +28,10 @@ on both sides (see "Results at the boundary" below).
 ## A port of your own
 
 Name it for what the application needs, never for what implements it (`StudentDirectory`, not
-`PostgresStudentTable`):
+`PostgresStudentTable`). `projected new port StudentDirectory --operations put,joinedOn` writes
+the port and an adapter on the document store as stubs; `--port StudentDirectory` on
+`projected new query` or `projected new event-handler` wires that adapter into the composition
+root. What the hand-written version looks like:
 
 ```ts
 // src/application/port/driven/student-directory.ts

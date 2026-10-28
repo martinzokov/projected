@@ -19,3 +19,4 @@ export {
   type EslintOptions,
   type RuleLevel,
 } from "./eslint.js";
+export { CRUD_VERBS } from "./rules/business-operation-names.js";

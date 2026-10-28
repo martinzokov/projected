@@ -53,6 +53,19 @@ test/                              given/when/then, use-case and HTTP tests
 
 ## The golden path
 
+Start with the generator, which writes the files of steps 1–5 as stubs, with their tests and the
+wiring — then make the stubs say what the business says:
+
+```sh
+projected new command withdraw-student --aggregate student --event StudentWithdrawn
+```
+
+It refuses names the rules would reject (a CRUD verb, an event that already exists) and writes
+nothing when it does. The generated decision records the event unconditionally, the contract
+takes only the id and returns `{}`, and the tests assert exactly that: steps 1–5 below are where
+each changes. `projected new` also makes aggregates, queries, ports and event handlers (see
+Commands).
+
 For a requirement like *"a student who leaves the school is withdrawn, but their record is kept"*:
 
 1. **Domain** — what happened, and what rule decides it (`projected-domain-modelling` skill):
@@ -164,6 +177,12 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 
 | Command | Does |
 |---|---|
+| `projected new service <dir> --flavour <f> --aggregate <name>` | a new service with its first aggregate; the flavour is fixed from then on |
+| `projected new aggregate <name>` | an aggregate and the property test its flavour requires |
+| `projected new command <type> --aggregate <name> --event <Event>` | contract, use case, stub decision, event, tests and wiring |
+| `projected new query <type> --aggregate <name>` / `--port <Port>` | contract, use case, HTTP test and wiring |
+| `projected new port <Name> --operations <a,b> [--adapter <factory>]` | a driven port returning Results and its adapter (on the document store by default) |
+| `projected new event-handler <name> --on <Event,...> [--port <Port>]` | an event handler, registered in the composition root |
 | `projected check` | architecture + design rules + contract lock + OpenAPI and vendor freshness, as CI runs it |
 | `projected check --strict` | the same, also failing on design-rule warnings |
 | `projected arch` | layout, layer tsconfigs, import boundaries, code rules |

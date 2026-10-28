@@ -7,7 +7,8 @@ const examples = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..",
 const eventSourced = join(examples, "school-event-sourced");
 const stateBased = join(examples, "school-state-based");
 
-describe("analysing a service's code", () => {
+// Each analysis builds a TypeScript program of the example: seconds, not milliseconds.
+describe("analysing a service's code", { timeout: 30_000 }, () => {
   it("binds every contract to the use case the composition root gives it", () => {
     const model = analyze(eventSourced);
 
