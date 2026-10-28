@@ -69,8 +69,10 @@ the trace they were recorded under, so one trace covers request → events → b
 
 ## Adding a transport
 
-Implement `MessageTransport` (`publish`, `subscribe(topic, handler, { group })`, `close`) and run
-`messageTransportConformance` against a real broker. Candidates: Amazon SQS/SNS (visibility
+Implement `MessageTransport` (`publish`, `subscribe(topic, handler, { group })`, `ping`, `close`)
+and run `messageTransportConformance` (from `@projected/testing/messaging`) against a real
+broker; `withTimeout` and `sleep` from `@projected/messaging` cover a prompt `ping()` and retry
+backoff. Candidates: Amazon SQS/SNS (visibility
 timeout as retry, redrive policy as dead letters), RabbitMQ (quorum queues, `nack` with requeue,
 dead-letter exchanges), Redis Streams (consumer groups, `XACK`, `XCLAIM` for redelivery), Google
 Pub/Sub, and a PostgreSQL-backed queue (`SELECT … FOR UPDATE SKIP LOCKED`) for zero extra

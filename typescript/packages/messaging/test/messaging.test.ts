@@ -15,7 +15,8 @@ import {
 } from "@projected/application/event-sourced";
 import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory/event-sourced";
 import { commandQueue, consumeCommands, consumeEvents, eventRelay, inMemoryTransport } from "@projected/messaging";
-import { messageTransportConformance, sequentialIds } from "@projected/testing/event-sourced";
+import { sequentialIds } from "@projected/testing/event-sourced";
+import { messageTransportConformance } from "@projected/testing/messaging";
 
 class AlreadyShipped extends defineError("AlreadyShipped", { schema: z.object({ orderId: z.string() }) }) {}
 const OrderShipped = defineEvent("OrderShipped", { schema: z.object({ orderId: z.string() }) });

@@ -17,6 +17,10 @@
     "./state-based": {
       "types": "./dist/state-based/index.d.ts",
       "default": "./dist/state-based/index.js"
+    },
+    "./messaging": {
+      "types": "./dist/messaging.d.ts",
+      "default": "./dist/messaging.js"
     }
   },
   "files": [
@@ -25,10 +29,18 @@
   ],
   "dependencies": {
     "@projected/application": "workspace:*",
-    "@projected/messaging": "workspace:*",
     "fast-check": "4.10.2"
   },
   "peerDependencies": {
-    "vitest": ">=3"
+    "vitest": ">=3",
+    "@projected/messaging": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@projected/messaging": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@projected/messaging": "workspace:*"
   }
 }

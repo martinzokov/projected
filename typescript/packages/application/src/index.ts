@@ -104,19 +104,18 @@ export {
   type HandledEvent,
 } from "./event-handler.js";
 export {
-  checkAccess,
   createApplication,
   type Application,
   type ApplicationOptions,
   type CommandHandler,
-  type EventHandlerBacklog,
-  type EventHandlingOptions,
   type Handler,
   type HandlerMap,
-  type HealthReport,
-  type IdempotencyOptions,
   type QueryHandler,
 } from "./application.js";
+export { checkAccess } from "./access.js";
+export type { EventHandlerBacklog, EventHandlingOptions } from "./event-handling.js";
+export type { IdempotencyOptions } from "./idempotency.js";
+export type { HealthReport } from "./lifecycle.js";
 export {
   asCallerError,
   inProcessService,

@@ -194,12 +194,12 @@ prove idempotency:
 Every store and transport passes the conformance suites for the ports it implements, against a
 real server — `eventStoreConformance` or `stateStoreConformance` (from the flavour entry points),
 `checkpointStoreConformance`, `idempotencyStoreConformance`,
-`documentStoreConformance`, `messageTransportConformance`:
+`documentStoreConformance`, and `messageTransportConformance` from `@projected/testing/messaging`:
 
 ```ts
 import { documentStoreConformance, eventStoreConformance } from "@projected/testing/event-sourced";
-eventStoreConformance("postgres", async () => postgresEventStore(sql, { schema: await freshSchema() }));
-documentStoreConformance("postgres", async () => postgresDocumentStore(sql, { schema: await freshSchema() }));
+eventStoreConformance("postgres", async () => postgresEventStore(db, { schema: await freshSchema() }));
+documentStoreConformance("postgres", async () => postgresDocumentStore(db, { schema: await freshSchema() }));
 ```
 
 Gate real-server tests on an environment variable (`describe.skip` when unset) so `pnpm test`

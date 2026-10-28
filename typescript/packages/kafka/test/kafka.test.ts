@@ -2,7 +2,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { Result, createApplication, defineCommand, defineContracts, z } from "@projected/application";
 import { kafkaTransport } from "@projected/kafka";
 import { commandQueue, consumeCommands } from "@projected/messaging";
-import { messageTransportConformance, principal, sequentialIds } from "@projected/testing";
+import { principal, sequentialIds } from "@projected/testing";
+import { messageTransportConformance } from "@projected/testing/messaging";
 
 /**
  * Runs against a real Kafka. Set PROJECTED_TEST_KAFKA_BROKERS to enable, e.g.

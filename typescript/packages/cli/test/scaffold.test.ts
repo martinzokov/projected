@@ -19,6 +19,24 @@ const workspace = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".."
 
 afterAll(removeScratch);
 
+describe("the template and the school examples", () => {
+  // The examples are the reference apps: what a new service shares with them must not drift apart.
+  it.each<Flavour>(["event-sourced", "state-based"])("write the composition-root modules they share as the %s school has them", (flavour) => {
+    const outside = mkdtempSync(join(tmpdir(), "projected-shared-"));
+    try {
+      newService(outside, "billing", { flavour, aggregate: "invoice" });
+      const generated = join(outside, "billing", "src/infrastructure/config");
+      const school = join(workspace, "examples", `school-${flavour}`, "src/infrastructure/config");
+
+      for (const file of ["auth.ts", "migrations.ts", "migrate.ts"]) {
+        expect(readFileSync(join(generated, file), "utf8"), file).toBe(readFileSync(join(school, file), "utf8"));
+      }
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a new service", () => {
   it.each<Flavour>(["event-sourced", "state-based"])(
     "compiles, passes projected check and its own tests as every generator adds to it (%s)",

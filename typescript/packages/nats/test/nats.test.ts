@@ -2,7 +2,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { Result, createApplication, defineCommand, defineContracts, z } from "@projected/application";
 import { natsTransport } from "@projected/nats";
 import { commandQueue, consumeCommands } from "@projected/messaging";
-import { messageTransportConformance, principal, sequentialIds } from "@projected/testing";
+import { principal, sequentialIds } from "@projected/testing";
+import { messageTransportConformance } from "@projected/testing/messaging";
 
 /**
  * Runs against a real NATS server with JetStream. Set PROJECTED_TEST_NATS_URL to enable, e.g.

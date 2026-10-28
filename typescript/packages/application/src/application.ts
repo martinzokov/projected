@@ -1,45 +1,26 @@
-import { Result, isTaggedError, panic, z, type BusinessError } from "@projected/domain";
-import type {
-  Access,
-  AnyContracts,
-  AnyOperationContract,
-  ErrorOf,
-  InputOf,
-  OperationsOf,
-  OutputOf,
-  RequestOf,
-} from "./contract.js";
+import { Result, isTaggedError, panic, type BusinessError } from "@projected/domain";
+import { checkAccess } from "./access.js";
+import type { AnyContracts, AnyOperationContract, ErrorOf, InputOf, OperationsOf, OutputOf, RequestOf } from "./contract.js";
 import {
-  Forbidden,
-  IdempotencyKeyReused,
   InvalidInput,
   OperationDefect,
-  defectReason,
-  RequestInProgress,
-  Unauthenticated,
   UnknownOperation,
-  UnknownTask,
+  defectReason,
   isInfrastructureError,
   type DispatchError,
   type InfrastructureError,
   type OperateError,
 } from "./errors.js";
-import { catchUp, type CatchUpReport, type EventHandler, type EventHandlingError } from "./event-handler.js";
-import { canonicalJson, sha256 } from "./fingerprint.js";
-import { OPERATE, defineOperatorTask, type OperatorTask } from "./operator.js";
-import type {
-  CheckpointStore,
-  EventLog,
-  ExecutionContext,
-  IdGenerator,
-  IdempotencyStore,
-  Metadata,
-  Principal,
-  ReadinessCheck,
-} from "./ports.js";
-import { currentTrace, noTelemetry, type Span, type Telemetry } from "./telemetry.js";
-import { decodeWireError, encodeWireError, toValidationIssues, type OperationRequest, type OperationResult } from "./wire.js";
+import type { CatchUpReport, EventHandlingError } from "./event-handler.js";
+import { eventHandling, type EventHandlerBacklog, type EventHandlingOptions } from "./event-handling.js";
+import { oncePerKey, type IdempotencyOptions } from "./idempotency.js";
+import { lifecycle, type HealthReport } from "./lifecycle.js";
 import type { MaybePromise } from "./naming.js";
+import type { OperatorTask } from "./operator.js";
+import { operatorTasks } from "./operator-tasks.js";
+import type { ExecutionContext, IdGenerator, Metadata, ReadinessCheck } from "./ports.js";
+import { currentTrace, noTelemetry, type Telemetry } from "./telemetry.js";
+import { decodeWireError, encodeWireError, toValidationIssues, type OperationRequest, type OperationResult } from "./wire.js";
 
 /** Structural, so it also recognises Results from another copy of better-result. */
 const isResult = (value: unknown): value is Result<unknown, unknown> =>
@@ -74,29 +55,6 @@ type HandlerOptions<C extends AnyContracts> = ({} extends HandlerMap<C["commands
     ? { readonly queries?: HandlerMap<C["queries"]> }
     : { readonly queries: HandlerMap<C["queries"]> });
 
-export interface EventHandlingOptions {
-  readonly handlers: readonly EventHandler[];
-  /** Where handlers read events from: the flavour's event store or state store. */
-  readonly store: EventLog;
-  readonly checkpoints: CheckpointStore;
-  /**
-   * Which handlers catch up after every successful command, before it responds: all of them
-   * (`true`, the default), none (`false`), or those named. Inline gives read-your-writes
-   * consistency at the cost of latency, so keep it to read models a caller reads right after
-   * writing; relays to a broker belong to a background poller (`startPolling` from
-   * `@projected/runtime`), which runs every handler and picks up whatever an inline run left.
-   */
-  readonly inline?: boolean | readonly string[];
-}
-
-export interface IdempotencyOptions {
-  readonly store: IdempotencyStore;
-  /** How long a claimed key stays locked while its command runs. Defaults to 60 s. */
-  readonly lockMs?: number;
-  /** How long a completed outcome is remembered. Defaults to 24 h. */
-  readonly ttlMs?: number;
-}
-
 export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
   /** Generates message ids for requests that arrive without one. */
   readonly ids: IdGenerator;
@@ -128,22 +86,6 @@ export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
    */
   readonly operatorTasks?: readonly OperatorTask[];
 };
-
-/** Whether the service should be sent traffic, and why not. */
-export interface HealthReport {
-  /** `ready` when every check passes; `draining` once {@link Application.drain} was called. */
-  readonly status: "ready" | "unready" | "draining";
-  readonly checks: ReadonlyArray<{ readonly name: string; readonly status: "up" | "down"; readonly message?: string }>;
-}
-
-/** How far one event handler is behind the log it reads. */
-export interface EventHandlerBacklog {
-  readonly handler: string;
-  /** The global position it has processed up to. */
-  readonly position: number;
-  /** The oldest event it has yet to process — absent when it is caught up. */
-  readonly oldestPending?: { readonly globalPosition: number; readonly recordedAt: string };
-}
 
 /** A service: contracts bound to handlers, callable from any transport. */
 export interface Application<C extends AnyContracts = AnyContracts> {
@@ -180,28 +122,6 @@ export interface Application<C extends AnyContracts = AnyContracts> {
 }
 
 /**
- * Keys are scoped to the caller, but every anonymous caller is the same caller: their keys must
- * be too long to guess, or one could replay another's outcome.
- */
-const MIN_ANONYMOUS_KEY_LENGTH = 16;
-
-/** Why a principal may not run an operation under `access`, or `undefined` when it may. */
-export function checkAccess(
-  operation: string,
-  access: Access,
-  principal: Principal | undefined,
-): Unauthenticated | Forbidden | undefined {
-  if (access === "public") return undefined;
-  if (principal === undefined) {
-    return new Unauthenticated({ operation, message: `${operation} requires an authenticated caller` });
-  }
-  if (access === "authenticated") return undefined;
-  const missing = access.permissions.filter((permission) => !principal.permissions.includes(permission));
-  if (missing.length === 0) return undefined;
-  return new Forbidden({ operation, missing, message: `${operation} requires ${missing.join(", ")}` });
-}
-
-/**
  * Bind contracts to handlers. This is the only place handlers are registered, and it lives in
  * the composition root (`src/infrastructure/config`).
  *
@@ -230,59 +150,12 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
   register("command", options.commands, contracts.commands);
   register("query", options.queries, contracts.queries);
 
-  const eventHandling = options.eventHandling;
-  const allHandlers = eventHandling?.handlers ?? [];
-  const inline = eventHandling?.inline ?? true;
-  if (typeof inline !== "boolean") {
-    const unknown = inline.filter((name) => !allHandlers.some((handler) => handler.name === name));
-    if (unknown.length > 0) panic(`createApplication: eventHandling.inline names no event handler: ${unknown.join(", ")}`);
-  }
-  const inlineHandlers = inline === true ? allHandlers : inline === false ? [] : allHandlers.filter((handler) => inline.includes(handler.name));
-
-  /** A handler that stopped: counted, and a defect reported like any other. */
-  const handlerFailed = (handler: EventHandler, error: EventHandlingError) => {
-    telemetry.count("projected.event_handler.failures", 1, { "projected.event_handler": handler.name, "projected.error.type": error._tag });
-    if (OperationDefect.is(error)) options.onDefect?.(error);
-  };
-  /** Catch one handler up. A store that throws is a defect, not a rejection. */
-  const catchUpOne = (handler: EventHandler, store: EventLog, checkpoints: CheckpointStore) =>
-    catchUp(handler, store, checkpoints, { telemetry }).catch((cause: unknown) => {
-      const reason = defectReason(cause);
-      return Result.err(
-        new OperationDefect({ operation: `event-handler ${handler.name}`, message: `catch-up threw${reason === undefined ? "" : `: ${reason}`}`, cause }),
-      );
-    });
-
-  let catchUpQueue: Promise<unknown> = Promise.resolve();
-  const runCatchUp = (
-    handlers: readonly EventHandler[],
-    onFailure?: (handler: EventHandler, error: EventHandlingError) => void,
-  ): Promise<Result<readonly CatchUpReport[], EventHandlingError>> => {
-    // Serialized so that concurrent requests never feed the same events to a handler twice.
-    const run = catchUpQueue.then(async (): Promise<Result<readonly CatchUpReport[], EventHandlingError>> => {
-      if (eventHandling === undefined) return Result.ok([]);
-      const reports: CatchUpReport[] = [];
-      let failure: EventHandlingError | undefined;
-      // Every handler gets its turn: a broken read model must not hold back a relay.
-      for (const handler of handlers) {
-        const report = await catchUpOne(handler, eventHandling.store, eventHandling.checkpoints);
-        if (report.isErr()) {
-          handlerFailed(handler, report.error);
-          onFailure?.(handler, report.error);
-          failure ??= report.error;
-          continue;
-        }
-        if (report.value.handled > 0) telemetry.count("projected.events.handled", report.value.handled, { "projected.event_handler": handler.name });
-        reports.push(report.value);
-      }
-      return failure === undefined ? Result.ok(reports) : Result.err(failure);
-    });
-    catchUpQueue = run.catch(() => undefined);
-    return run;
-  };
-  const inlineFailed = (handler: EventHandler, error: EventHandlingError) => {
-    if (!OperationDefect.is(error)) options.onEventHandlingError?.(error, handler.name);
-  };
+  const events = eventHandling(options.eventHandling, {
+    telemetry,
+    onDefect: options.onDefect,
+    onEventHandlingError: options.onEventHandlingError,
+  });
+  const runOnce = options.idempotency === undefined ? undefined : oncePerKey(options.idempotency, contracts.name);
 
   const defect = (contract: AnyOperationContract, message: string, cause?: unknown): Result<never, OperationDefect> => {
     const reason = defectReason(cause);
@@ -324,7 +197,7 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       const output = contract.output.safeParse(outcome.value);
       if (!output.success) return defect(contract, "handler output does not match the contract", output.error);
       // Failures are reported as they happen; the command has succeeded either way.
-      if (contract.kind === "command" && inlineHandlers.length > 0) await runCatchUp(inlineHandlers, inlineFailed);
+      if (contract.kind === "command") await events.afterCommand();
       return Result.ok({ status: "ok", value: output.data });
     }
     const error = outcome.error;
@@ -334,196 +207,15 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
     return Result.ok({ status: "error", error: wire });
   };
 
-  /** Run a command at most once per idempotency key, replaying the stored outcome for repeats. */
-  const runOnce = async (
-    idempotency: IdempotencyOptions,
-    key: string,
-    contract: AnyOperationContract,
-    input: unknown,
-    metadata: Metadata,
-    span: Span,
-  ): Promise<Result<OperationResult, DispatchError>> => {
-    const handler = handlers.get(`${contract.kind}:${contract.key}`) as Handler<AnyOperationContract>;
-    // Keys are scoped to the caller, so one principal can never replay another's outcome.
-    const scoped = `${contracts.name}:${metadata.principal?.id ?? "anonymous"}:${key}`;
-    const fingerprint = sha256(canonicalJson({ kind: contract.kind, operation: contract.key, input }));
-    const claim = await idempotency.store.claim(scoped, fingerprint, {
-      lockMs: idempotency.lockMs ?? 60_000,
-      ttlMs: idempotency.ttlMs ?? 24 * 60 * 60 * 1000,
-    });
-    if (claim.isErr()) return Result.err(claim.error);
-    const state = claim.value;
-    if (state.status !== "claimed" && state.fingerprint !== fingerprint) {
-      return Result.err(
-        new IdempotencyKeyReused({ idempotencyKey: key, message: `Idempotency key ${key} was used for a different request` }),
-      );
-    }
-    if (state.status === "completed") {
-      span.setAttributes({ "projected.idempotency": "replayed" });
-      return Result.ok(state.result);
-    }
-    if (state.status === "in-progress") {
-      return Result.err(new RequestInProgress({ idempotencyKey: key, message: `A request with key ${key} is still running` }));
-    }
-
-    span.setAttributes({ "projected.idempotency": "first" });
-    const outcome = await run(contract, handler, input, metadata);
-    // Business outcomes are final and remembered; anything else may succeed on a retry.
-    const settled = outcome.isOk()
-      ? await idempotency.store.complete(scoped, outcome.value)
-      : await idempotency.store.release(scoped);
-    // The command ran either way, so the caller still gets its outcome. An unrecorded outcome
-    // only matters if this exact request is retried after the lock expires — make that visible.
-    if (settled.isErr()) span.fail(`could not record the idempotent outcome: ${settled.error.message}`);
-    return outcome;
-  };
-
-  // Work in flight, for drain() to wait on.
-  const inFlight = new Set<Promise<unknown>>();
-  let draining = false;
-  const track = <T>(work: Promise<T>): Promise<T> => {
-    inFlight.add(work);
-    // Both callbacks, not `finally`: a derived promise that rejects again would go unhandled
-    // and end the process, even though the caller handles `work` itself.
-    const settled = () => inFlight.delete(work);
-    void work.then(settled, settled);
-    return work;
-  };
-
-  const health = async (): Promise<HealthReport> => {
-    const checks = await Promise.all(
-      (options.readiness ?? []).map(async (readiness) => {
-        const outcome = await readiness.check().catch((cause: unknown) => Result.err({ message: `check threw: ${String(cause)}` }));
-        return outcome.isOk()
-          ? { name: readiness.name, status: "up" as const }
-          : { name: readiness.name, status: "down" as const, message: outcome.error.message };
-      }),
-    );
-    const status = draining ? "draining" : checks.every((check) => check.status === "up") ? "ready" : "unready";
-    return { status, checks };
-  };
-
-  const drain = async (): Promise<void> => {
-    draining = true;
-    // Work started while waiting is waited for too.
-    while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
-    await catchUpQueue;
-  };
-
-  const backlog = async (): Promise<Result<readonly EventHandlerBacklog[], InfrastructureError>> => {
-    if (eventHandling === undefined) return Result.ok([]);
-    const backlogs: EventHandlerBacklog[] = [];
-    for (const handler of eventHandling.handlers) {
-      const position = await eventHandling.checkpoints.load(handler.name);
-      if (position.isErr()) return Result.err(position.error);
-      const next = await eventHandling.store.readAll({ after: position.value, limit: 1 });
-      if (next.isErr()) return Result.err(next.error);
-      const pending = next.value[0];
-      backlogs.push({
-        handler: handler.name,
-        position: position.value,
-        ...(pending === undefined ? {} : { oldestPending: { globalPosition: pending.globalPosition, recordedAt: pending.recordedAt } }),
-      });
-    }
-    return Result.ok(backlogs);
-  };
-
-  const noSuchHandler = (name: string) => {
-    const names = eventHandling?.handlers.map((handler) => handler.name) ?? [];
-    const message =
-      names.length === 0 ? "This service has no event handlers" : `No event handler ${name}; there are: ${names.join(", ")}`;
-    return new InvalidInput({ issues: [{ path: ["handler"], message, code: undefined }], message });
-  };
-
-  const builtInTasks: OperatorTask[] = [
-    defineOperatorTask({
-      name: "list-tasks",
-      description: "The operator tasks this service offers, with the input each takes.",
-      input: z.object({}),
-      run: () =>
-        Result.ok({
-          tasks: [...tasks.values()].map((task) => ({
-            name: task.name,
-            description: task.description,
-            input: z.toJSONSchema(task.input, { io: "input", unrepresentable: "any" }),
-          })),
-        }),
-    }),
-    defineOperatorTask({
-      name: "backlog",
-      description: "Each event handler's checkpoint, and the oldest event it has yet to process.",
-      input: z.object({}),
-      run: async () => (await backlog()).map((handlers) => ({ handlers })),
-    }),
-    defineOperatorTask({
-      name: "rebuild",
-      description:
-        "Replay every event to one event handler from the start, after its reset if it has one: rebuilds a read model. " +
-        "Stop the other instances' event handling first, so none moves the checkpoint meanwhile.",
-      input: z.object({ handler: z.string() }),
-      run: async ({ handler: name }) => {
-        const handler = eventHandling?.handlers.find((candidate) => candidate.name === name);
-        if (eventHandling === undefined || handler === undefined) return Result.err(noSuchHandler(name));
-        // In the catch-up queue, so no catch-up in this process reads the checkpoint mid-reset.
-        const rebuilt = catchUpQueue.then(async (): Promise<Result<CatchUpReport, EventHandlingError>> => {
-          if (handler.reset !== undefined) {
-            const reset = await handler.reset();
-            if (reset.isErr()) return Result.err(reset.error);
-          }
-          const rewound = await eventHandling.checkpoints.save(handler.name, 0);
-          if (rewound.isErr()) return Result.err(rewound.error);
-          const report = await catchUpOne(handler, eventHandling.store, eventHandling.checkpoints);
-          if (report.isErr()) handlerFailed(handler, report.error);
-          return report;
-        });
-        catchUpQueue = rebuilt.catch(() => undefined);
-        return rebuilt;
-      },
-    }),
-  ];
-  const tasks = new Map<string, OperatorTask>();
-  for (const task of [...builtInTasks, ...(options.operatorTasks ?? [])]) {
-    if (tasks.has(task.name)) panic(`createApplication: two operator tasks are named ${task.name}`);
-    tasks.set(task.name, task);
-  }
-
-  const operate = async (name: string, input: unknown, given?: Partial<Metadata>): Promise<Result<unknown, OperateError>> => {
-    const task = tasks.get(name);
-    if (task === undefined) return Result.err(new UnknownTask({ task: name, message: `No operator task ${name}; list-tasks names the ones there are` }));
-    const operation = `task ${name}`;
-    return telemetry.span(
-      operation,
-      { kind: "internal", attributes: { "projected.service": contracts.name, "projected.task": name, "enduser.id": given?.principal?.id } },
-      async (span) => {
-        const outcome = await (async (): Promise<Result<unknown, OperateError>> => {
-          const denied = checkAccess(operation, { permissions: [OPERATE] }, given?.principal);
-          if (denied !== undefined) return Result.err(denied);
-          const parsed = task.input.safeParse(input);
-          if (!parsed.success) {
-            return Result.err(new InvalidInput({ issues: toValidationIssues(parsed.error.issues), message: `Invalid input for ${operation}` }));
-          }
-          try {
-            return await task.run(parsed.data, { metadata: completeMetadata(given) });
-          } catch (cause) {
-            const reason = defectReason(cause);
-            const error = new OperationDefect({ operation, message: `task threw${reason === undefined ? "" : `: ${reason}`}`, cause });
-            options.onDefect?.(error);
-            return Result.err(error);
-          }
-        })();
-        const result = outcome.isOk() ? "ok" : "failed";
-        if (outcome.isErr()) span.fail(outcome.error.message);
-        span.setAttributes({ "projected.outcome": result, "projected.error.type": outcome.isErr() ? outcome.error._tag : undefined });
-        telemetry.count("projected.operator_tasks", 1, {
-          "projected.service": contracts.name,
-          "projected.task": name,
-          "projected.outcome": result,
-          "projected.error.type": outcome.isErr() ? outcome.error._tag : undefined,
-        });
-        return outcome;
-      },
-    );
-  };
+  const { track, health, drain } = lifecycle(options.readiness ?? [], events.idle);
+  const operate = operatorTasks({
+    service: contracts.name,
+    telemetry,
+    events,
+    tasks: options.operatorTasks ?? [],
+    metadata: completeMetadata,
+    onDefect: options.onDefect,
+  });
 
   const dispatch = (request: OperationRequest): Promise<Result<OperationResult, DispatchError>> => {
     const contract = contracts.find(request.kind, request.type, request.version);
@@ -572,15 +264,11 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
           }
           const metadata = completeMetadata(given);
           const key = metadata.idempotencyKey;
-          if (contract.kind === "command" && key !== undefined && options.idempotency !== undefined) {
-            // Anonymous callers share one scope, so the key itself must be what keeps their outcomes apart.
-            if (metadata.principal === undefined && key.length < MIN_ANONYMOUS_KEY_LENGTH) {
-              const message = `An anonymous caller's idempotency key must be at least ${MIN_ANONYMOUS_KEY_LENGTH} characters: send a random UUID`;
-              return Result.err(new InvalidInput({ issues: [{ path: ["Idempotency-Key"], message, code: undefined }], message }));
-            }
-            return runOnce(options.idempotency, key, contract, input.data, metadata, span);
+          const once = () => run(contract, handler, input.data, metadata);
+          if (contract.kind === "command" && key !== undefined && runOnce !== undefined) {
+            return runOnce({ key, contract, input: input.data, metadata }, span, once);
           }
-          return run(contract, handler, input.data, metadata);
+          return once();
         })();
 
         const result = outcome.match<{ outcome: string; errorType: string | undefined }>({
@@ -617,10 +305,10 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       const error = decodeWireError(contract, result.error);
       return error === undefined ? defect(contract, `cannot decode error ${result.error.type}`) : Result.err(error);
     },
-    catchUp: () => track(runCatchUp(allHandlers)),
+    catchUp: () => track(events.catchUp()),
     health,
     drain,
-    backlog,
+    backlog: events.backlog,
     operate: (task, input, metadata) => track(operate(task, input, metadata)),
   };
 }
