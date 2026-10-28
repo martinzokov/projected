@@ -1,4 +1,5 @@
 import { Result, type Clock, type IdempotencyStore, type OperationResult } from "@projected/application";
+import { asJson } from "./json.js";
 
 type Entry =
   | { readonly status: "in-progress"; readonly fingerprint: string; readonly lockedUntil: number; readonly expiresAt: number }
@@ -21,14 +22,14 @@ export function inMemoryIdempotencyStore(options: { readonly clock?: Clock } = {
       }
       return Result.ok(
         entry.status === "completed"
-          ? { status: "completed", fingerprint: entry.fingerprint, result: structuredClone(entry.result) }
+          ? { status: "completed", fingerprint: entry.fingerprint, result: asJson(entry.result) }
           : { status: "in-progress", fingerprint: entry.fingerprint },
       );
     },
     complete: async (key, result) => {
       const entry = entries.get(key);
       if (entry !== undefined) {
-        entries.set(key, { status: "completed", fingerprint: entry.fingerprint, result: structuredClone(result), expiresAt: entry.expiresAt });
+        entries.set(key, { status: "completed", fingerprint: entry.fingerprint, result: asJson(result), expiresAt: entry.expiresAt });
       }
       return Result.ok(undefined);
     },

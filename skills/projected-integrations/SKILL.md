@@ -86,10 +86,18 @@ export const studentDirectoryProjection = (deps: { directory: StudentDirectory }
 ```
 
 Register it in the composition root under `eventHandling`. By default handlers run **inline**
-after each successful command (read-your-writes). For background processing set
-`inline: false` and run `startPolling(app)` from `@projected/runtime`. Delivery is
-at-least-once from a checkpoint: **handlers must be idempotent** (upsert, not insert). Renaming a
-handler resets its checkpoint and replays history — sometimes exactly what you want.
+after each successful command (read-your-writes). Name the ones that need it —
+`inline: ["student-directory"]` — when others should stay off the request path: a relay to a
+broker, a policy that calls a slow API. Always run `startPolling(app)` from `@projected/runtime`
+in `main.ts` as well: it runs every handler in the background, including whatever an inline
+catch-up could not finish. Delivery is at-least-once from a checkpoint: **handlers must be
+idempotent** (upsert, not insert). Renaming a handler resets its checkpoint and replays
+history — sometimes exactly what you want.
+
+One failing handler never holds back the others. A handler that returns an infrastructure error
+resumes at that event on the next catch-up (inline failures reach `onEventHandlingError`); one
+that throws, or meets an event it cannot decode, is a defect — reported to `onDefect`, and
+stuck at that event until the code is fixed. Return Results; never throw.
 
 ## Policies: reacting to events
 

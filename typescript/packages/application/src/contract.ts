@@ -1,4 +1,4 @@
-import { panic, z, type AnyBusinessErrorClass } from "@projected/domain";
+import { assertJsonCompatible, panic, z, type AnyBusinessErrorClass } from "@projected/domain";
 
 const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -114,14 +114,14 @@ function defineOperation<
   if (!Number.isInteger(version) || version < 1) {
     panic(`${label}: version must be a positive integer, got ${version}`);
   }
-  assertWireCompatible(label, "input", options.input, "input");
-  assertWireCompatible(label, "output", options.output, "output");
+  assertJsonCompatible(label, "input", options.input, "input");
+  assertJsonCompatible(label, "output", options.output, "output");
   const errors = (options.errors ?? []) as unknown as Errors;
   const tags = new Set<string>();
   for (const error of errors) {
     if (tags.has(error.tag)) panic(`${label}: error ${error.tag} is listed twice`);
     tags.add(error.tag);
-    assertWireCompatible(label, `error ${error.tag}`, error.schema, "output");
+    assertJsonCompatible(label, `error ${error.tag}`, error.schema, "output");
   }
   return {
     kind,
@@ -147,18 +147,6 @@ function checkAccess(label: string, access: Access): Access {
     if (!PERMISSION.test(permission)) panic(`${label}: permission "${permission}" must look like "students:enlist"`);
   }
   return { permissions: [...access.permissions] };
-}
-
-/**
- * Every contract crosses a transport, so its schemas must have a JSON Schema form: no
- * `z.date()`, `z.bigint()`, functions or output-side transforms. Checked once, at startup.
- */
-function assertWireCompatible(label: string, what: string, schema: z.ZodType, io: "input" | "output"): void {
-  try {
-    z.toJSONSchema(schema, { io, unrepresentable: "throw" });
-  } catch (cause) {
-    panic(`${label}: ${what} schema is not JSON-compatible (use z.iso.date(), z.iso.datetime(), plain objects)`, cause);
-  }
 }
 
 /**

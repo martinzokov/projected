@@ -3,7 +3,7 @@ import { OPERATE } from "@projected/application/event-sourced";
 import { httpHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
-import { monitorBacklog, randomIds, shutdownGracefully, systemClock } from "@projected/runtime";
+import { monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { composeSchool } from "./school.js";
 
@@ -12,7 +12,14 @@ const infrastructure = await environment(clock);
 // Spans go wherever the OpenTelemetry SDK sends them; register one (e.g. @opentelemetry/sdk-node) to export.
 const telemetry = openTelemetry();
 
-const school = composeSchool({ ...infrastructure, clock, ids: randomIds(), telemetry, onDefect: (defect) => console.error("defect", defect) });
+const school = composeSchool({
+  ...infrastructure,
+  clock,
+  ids: randomIds(),
+  telemetry,
+  onDefect: (defect) => console.error("defect", defect),
+  onEventHandlingError: (error, handler) => console.error(`event handler ${handler}`, error.message),
+});
 
 // Registrars manage enrolment and operate the service (`projected operate`): users with
 // better-auth's admin role, or listed in SCHOOL_ADMINS.
@@ -32,6 +39,10 @@ const server = await serve(
 );
 console.log(`school is listening on ${server.url} — OpenAPI document at ${server.url}/openapi.json`);
 
+// Every event handler catches up in the background too: the relays, and whatever a failed
+// inline catch-up left behind.
+const poller = startPolling(school, { onError: (error) => console.error("event handling", error.message) });
+
 // Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
 const backlog = monitorBacklog(school, { clock, onError: (error) => console.error("backlog", error.message) });
 
@@ -39,7 +50,7 @@ const backlog = monitorBacklog(school, { clock, onError: (error) => console.erro
 // requests, finish those in flight, then close connections.
 shutdownGracefully({
   app: school,
-  intake: [server, backlog],
+  intake: [server, poller, backlog],
   close: infrastructure.close,
   graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
   log: (message) => console.log(message),

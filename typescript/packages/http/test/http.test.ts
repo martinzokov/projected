@@ -400,6 +400,23 @@ describe("httpService", () => {
     expect(outcome.isErr() && DependencyUnavailable.is(outcome.error)).toBe(true);
   });
 
+  it("passes every cookie a route sets through the Node server", async () => {
+    const signIn = async () => {
+      const headers = new Headers();
+      headers.append("set-cookie", "session=abc; Path=/; HttpOnly");
+      headers.append("set-cookie", "remember=no; Path=/");
+      return new Response(null, { status: 204, headers });
+    };
+    const server = await serve(httpHandler(libraryApp(), { routes: { "/auth": signIn } }), { port: 0, hostname: "127.0.0.1" });
+    try {
+      const response = await fetch(`${server.url}/auth/sign-in`, { method: "POST" });
+
+      expect(response.headers.getSetCookie()).toEqual(["session=abc; Path=/; HttpOnly", "remember=no; Path=/"]);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("talks to a real server", async () => {
     const server = await serve(httpHandler(libraryApp()), { port: 0, hostname: "127.0.0.1" });
     try {

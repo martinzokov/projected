@@ -43,5 +43,6 @@ export {
   type EventOfDefinition,
   type SerializedEvent,
 } from "./event.js";
+export { assertJsonCompatible } from "./json.js";
 /** A schema migration — for stored events and stored states alike. */
 export type { EventMigration as Migration } from "./event.js";

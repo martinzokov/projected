@@ -1,6 +1,7 @@
 import { Result, TaggedError, panic } from "better-result";
 import type { z } from "zod";
 import type { AnyEventDefinition, EventMigration, EventOfDefinition, SerializedEvent } from "../event.js";
+import { assertJsonCompatible } from "../json.js";
 
 const CAMEL_CASE = /^[a-z][a-zA-Z0-9]*$/;
 
@@ -127,6 +128,10 @@ export function defineAggregate<
   if (migrations.length !== version - 1 || migrations.some((m, index) => m.from !== index + 1)) {
     panic(`defineAggregate("${options.name}"): version ${version} needs one migration from each of versions 1..${version - 1}`);
   }
+  const label = `defineAggregate("${options.name}")`;
+  assertJsonCompatible(label, "state", options.schema, "output");
+  assertJsonCompatible(label, "state", options.schema, "input");
+  migrations.forEach((m) => assertJsonCompatible(label, `version ${m.from}`, m.schema, "input"));
   const events = (options.events ?? []) as unknown as Events;
   const byType = new Map<string, AnyEventDefinition>();
   for (const definition of events) {

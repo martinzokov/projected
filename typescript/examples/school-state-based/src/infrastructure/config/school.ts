@@ -38,6 +38,8 @@ export interface SchoolInfrastructure {
   /** What the school cannot serve without, reported by `GET /health/ready`. */
   readonly readiness?: readonly ReadinessCheck[];
   readonly onDefect?: (defect: Error) => void;
+  /** An event handler the request path could not bring up to date; the poller retries it. */
+  readonly onEventHandlingError?: (error: Error, handler: string) => void;
 }
 
 /**
@@ -48,6 +50,7 @@ export function composeSchool(infrastructure: SchoolInfrastructure) {
   const { stateStore, checkpoints, documents, idempotency, clock, ids, telemetry } = infrastructure;
   const students = aggregateRepository(Student, stateStore, telemetry === undefined ? {} : { telemetry });
   const directory = documentStudentDirectory(documents);
+  const studentDirectory = studentDirectoryProjection({ directory });
 
   return createApplication(schoolContracts, {
     ids,
@@ -62,13 +65,17 @@ export function composeSchool(infrastructure: SchoolInfrastructure) {
       "student-profile@1": studentProfile({ students }),
     },
     eventHandling: {
-      handlers: [studentDirectoryProjection({ directory }), ...(infrastructure.eventHandlers ?? [])],
+      handlers: [studentDirectory, ...(infrastructure.eventHandlers ?? [])],
       store: stateStore,
       checkpoints,
+      // Callers read the directory right after enlisting, so it catches up with every command.
+      // Relays to a broker run in the background (main.ts), off the request path.
+      inline: [studentDirectory.name],
     },
     idempotency: { store: idempotency },
     readiness: infrastructure.readiness ?? [],
     ...(telemetry === undefined ? {} : { telemetry }),
     ...(infrastructure.onDefect === undefined ? {} : { onDefect: infrastructure.onDefect }),
+    ...(infrastructure.onEventHandlingError === undefined ? {} : { onEventHandlingError: infrastructure.onEventHandlingError }),
   });
 }

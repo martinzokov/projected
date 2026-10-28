@@ -1,5 +1,5 @@
 import {
-  Result,
+  OperationDefect,
   handleTraced,
   noTelemetry,
   traceCarrier,
@@ -91,12 +91,12 @@ export function consumeEvents(
       }
       const recorded = parsed.data as RecordedEvent;
       if (!handler.handles(recorded.type)) return "ack";
-      const outcome = await Result.tryPromise(() => handleTraced(handler, recorded, telemetry));
-      if (outcome.isErr()) {
-        options.onRejected?.(message.body, "handler could not decode or process the event");
-        return "dead-letter";
-      }
-      return outcome.value.isOk() ? "ack" : "retry";
+      const outcome = await handleTraced(handler, recorded, telemetry);
+      if (outcome.isOk()) return "ack";
+      // A defect will not pass on redelivery: set the event aside. Anything else may.
+      if (!OperationDefect.is(outcome.error)) return "retry";
+      options.onRejected?.(message.body, outcome.error.message);
+      return "dead-letter";
     },
     { group: options.group ?? handler.name },
   );

@@ -2,7 +2,7 @@
  * @projected/runtime — real implementations of the framework's own ports, for the composition
  * root. Import it only from `src/infrastructure/**`.
  */
-import type { AnyContracts, Application, Clock, IdGenerator, InfrastructureError } from "@projected/application";
+import type { AnyContracts, Application, Clock, EventHandlingError, IdGenerator } from "@projected/application";
 import { randomUUID } from "node:crypto";
 
 /** The wall clock. */
@@ -18,8 +18,11 @@ export function randomIds(): IdGenerator {
 export interface PollingOptions {
   /** Pause between catch-ups that found nothing to do. Defaults to 1000 ms. */
   readonly intervalMs?: number;
-  /** Called when a catch-up fails; polling continues after the interval. */
-  readonly onError?: (error: InfrastructureError) => void;
+  /**
+   * Called when a handler could not catch up; polling continues after the interval, and the
+   * handler resumes at the failed event. Defects also reach the application's `onDefect`.
+   */
+  readonly onError?: (error: EventHandlingError) => void;
 }
 
 export interface Poller {

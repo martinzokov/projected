@@ -13,6 +13,7 @@ import {
   type StoredState,
 } from "@projected/application/state-based";
 import { randomUUID } from "node:crypto";
+import { asJson } from "../json.js";
 
 export interface InMemoryStateStoreOptions {
   readonly clock?: Clock;
@@ -50,11 +51,11 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
       return [...log];
     },
     eventsOf: (key) => [...(rows.get(key)?.events ?? [])],
-    stateOf: (key) => structuredClone(rows.get(key)?.state),
+    stateOf: (key) => asJson(rows.get(key)?.state),
 
     load: async (key): Promise<Result<StoredState, DependencyUnavailable>> => {
       const row = rows.get(key);
-      return Result.ok({ version: row?.version ?? 0, state: structuredClone(row?.state) });
+      return Result.ok({ version: row?.version ?? 0, state: asJson(row?.state) });
     },
 
     save: async (
@@ -83,15 +84,15 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
           type: event.type,
           schemaVersion: event.schemaVersion,
           // Stored as JSON, as a real store would, so nothing shares references with the caller.
-          data: structuredClone(event.data),
-          metadata: structuredClone(event.metadata ?? {}),
+          data: asJson(event.data),
+          metadata: asJson(event.metadata ?? {}),
           recordedAt,
         }),
       );
       const version = row.version + 1;
       rows.set(key, {
         version,
-        state: write.state === null ? undefined : structuredClone(write.state),
+        state: write.state === null ? undefined : asJson(write.state),
         events: [...row.events, ...recorded],
       });
       log.push(...recorded);

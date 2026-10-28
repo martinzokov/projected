@@ -104,6 +104,7 @@ with a metric exporter to collect them. In tests, `recordingTelemetry()` keeps t
 |---|---|---|---|
 | `projected.operations` | counter | `projected.service`, `projected.operation.kind`, `.type`, `.version`, `projected.outcome` (`ok`, `error`, `failed`), `projected.error.type` | the dispatcher, for every operation over any transport |
 | `projected.events.handled` | counter | `projected.event_handler` | every catch-up |
+| `projected.event_handler.failures` | counter | `projected.event_handler`, `projected.error.type` | a handler stopping at an event: an infrastructure error, or `OperationDefect` when it threw |
 | `http.server.request.duration` | distribution, seconds | `http.request.method`, `http.route`, `http.response.status_code` | the HTTP handler |
 | `projected.event_handler.lag` | gauge, seconds | `projected.event_handler` | `monitorBacklog` |
 | `projected.event_handler.position` | gauge | `projected.event_handler` | `monitorBacklog` |
@@ -114,6 +115,12 @@ with a metric exporter to collect them. In tests, `recordingTelemetry()` keeps t
 has yet to process has been waiting — 0 when it is caught up. A lag that keeps growing is a
 handler failing on an event, or one too slow for the rate of events. `app.backlog()` gives the
 same as data: each handler's checkpoint and its oldest pending event.
+
+A handler stops at the first event it cannot handle and resumes there on the next catch-up; the
+others carry on. One that returns an infrastructure error (the mailer is down) usually gets past
+it by itself. One that throws, or cannot decode the event, is a defect: it reaches `onDefect`
+and stays stuck until a fixed version is deployed. Run `startPolling(app)` so that every handler
+is retried in the background, not only when the next command arrives.
 
 In the state-based flavour handlers read the outbox, so an event relay's lag is how long events
 wait in the outbox before they reach the broker.

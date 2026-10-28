@@ -1,5 +1,6 @@
 import { TaggedError, panic, type TaggedErrorInstance } from "better-result";
 import { z } from "zod";
+import { assertJsonCompatible } from "./json.js";
 
 /** Property names a business error's schema may not declare: `Error` and `TaggedError` own them. */
 const RESERVED_ERROR_PROPERTIES = ["_tag", "name", "message", "stack", "cause", "match", "toJSON"];
@@ -90,6 +91,9 @@ export function defineError<const Tag extends string, S extends z.ZodObject = z.
   if (reserved.length > 0) {
     panic(`defineError("${tag}"): schema declares reserved properties: ${reserved.join(", ")}`);
   }
+  // Sent to callers, and rebuilt from JSON by typed clients.
+  assertJsonCompatible(`defineError("${tag}")`, "data", schema, "output");
+  assertJsonCompatible(`defineError("${tag}")`, "data", schema, "input");
   const message = options.message ?? tag;
   const toMessage = (props: z.output<S>): string => (typeof message === "function" ? message(props) : message);
 

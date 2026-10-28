@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,17 +16,22 @@ export const tsc = join(dirname(require.resolve("typescript/package.json")), "bi
 export const vitest = join(dirname(require.resolve("vitest/package.json")), "vitest.mjs");
 export const projected = join(here, "..", "bin", "projected.js");
 const exec = promisify(execFile);
-let counter = 0;
+const services: string[] = [];
 
-export const removeScratch = () => rmSync(scratch, { recursive: true, force: true });
+/**
+ * Remove the services this test file created. Only those: test files run in parallel, and the
+ * scratch directory is shared with the ones still running.
+ */
+export const removeScratch = () => services.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 
 export type Flavour = "event-sourced" | "state-based";
 
 /** A new service in the workspace, with the framework and its other dependencies linked as `pnpm install` would. */
 export function service(flavour: Flavour, aggregate = "invoice"): string {
-  const parent = join(scratch, `${process.pid}-${++counter}`);
+  mkdirSync(scratch, { recursive: true });
+  const parent = mkdtempSync(join(scratch, "service-"));
+  services.push(parent);
   const root = join(parent, "billing");
-  mkdirSync(parent, { recursive: true });
   const created = newService(parent, "billing", { flavour, aggregate });
   if (!created.ok) throw new Error(created.lines.join("\n"));
   mkdirSync(join(root, "node_modules", "@projected"), { recursive: true });

@@ -69,6 +69,13 @@ async function respond(handler: FetchHandler, req: IncomingMessage, res: ServerR
     ...(method === "GET" || method === "HEAD" ? {} : { body: Buffer.concat(chunks) }),
   });
   const response = await handler(request);
-  res.writeHead(response.status, Object.fromEntries(response.headers));
+  // One entry per name would keep only the last cookie: Set-Cookie is the header that repeats.
+  const outgoing: Record<string, string | string[]> = {};
+  response.headers.forEach((value, name) => {
+    if (name !== "set-cookie") outgoing[name] = value;
+  });
+  const cookies = response.headers.getSetCookie();
+  if (cookies.length > 0) outgoing["set-cookie"] = cookies;
+  res.writeHead(response.status, outgoing);
   res.end(Buffer.from(await response.arrayBuffer()));
 }

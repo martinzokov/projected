@@ -1,5 +1,6 @@
 import { Result, TaggedError, panic } from "better-result";
 import type { z } from "zod";
+import { assertJsonCompatible } from "./json.js";
 
 const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
 
@@ -117,6 +118,10 @@ export function defineEvent<const Type extends string, S extends z.ZodType>(
   if (migrations.length !== version - 1) {
     panic(`defineEvent("${type}"): version ${version} needs ${version - 1} migration(s), found ${migrations.length}`);
   }
+  // Written as the output, read back through the input: both sides are stored JSON.
+  assertJsonCompatible(`defineEvent("${type}")`, "data", options.schema, "output");
+  assertJsonCompatible(`defineEvent("${type}")`, "data", options.schema, "input");
+  migrations.forEach((m) => assertJsonCompatible(`defineEvent("${type}")`, `version ${m.from}`, m.schema, "input"));
 
   type Data = z.output<S>;
   const decodingFailed = (schemaVersion: number, message: string, issues?: readonly z.core.$ZodIssue[]) =>

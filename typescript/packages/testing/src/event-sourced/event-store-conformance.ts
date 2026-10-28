@@ -1,5 +1,6 @@
 import { ConcurrencyConflict, type EventStore, type NewEvent } from "@projected/application/event-sourced";
 import { describe, expect, it } from "vitest";
+import { followWhileWriting } from "../ordering.js";
 
 const event = (type: string, data: unknown = {}): NewEvent => ({ type, schemaVersion: 1, data });
 
@@ -126,6 +127,28 @@ export function eventStoreConformance(name: string, create: () => EventStore | P
       expect(all.map((e) => e.type)).toEqual(["A", "B", "C"]);
       expect(all.every((e, i) => i === 0 || e.globalPosition > (all[i - 1]?.globalPosition ?? 0))).toBe(true);
       expect(rest.map((e) => e.type)).toEqual(["B"]);
+    });
+
+    it("never lets a reader following the log skip an event, however appends interleave", async () => {
+      const store = await create();
+
+      const { seen, all } = await followWhileWriting(store, async (stream, index) =>
+        (await store.appendToStream(`order-${stream}`, [event("A", { index })], { expectedVersion: index })).unwrap(),
+      );
+
+      expect(all).toHaveLength(200);
+      expect(seen).toEqual(all);
+    }, 30_000);
+
+    it("stores data and metadata as JSON: a date comes back as its ISO string", async () => {
+      const store = await create();
+      const at = new Date("2024-03-01T10:00:00.000Z");
+      await store.appendToStream("order-1", [{ type: "A", schemaVersion: 1, data: { at, gone: undefined }, metadata: { at } }], { expectedVersion: 0 });
+
+      const { events } = (await store.readStream("order-1")).unwrap();
+
+      expect(events[0]?.data).toEqual({ at: "2024-03-01T10:00:00.000Z" });
+      expect(events[0]?.metadata.at).toBe("2024-03-01T10:00:00.000Z");
     });
 
     it("does not let callers mutate stored events", async () => {

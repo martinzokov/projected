@@ -111,8 +111,10 @@ and event handlers reading a global log from a checkpoint. They differ in what i
 - **Streams** are `<category>-<id>`; the store keeps a global log with strictly increasing
   positions.
 - **Event handlers** (projections and policies) consume the global log from a checkpoint, at
-  least once. They run inline after each command (read-your-writes) or in the background. The
-  event relay is just another event handler, so the event store is the outbox.
+  least once. They run inline after each command (read-your-writes), in the background, or —
+  for read models only — both. The event relay is just another event handler, so the event
+  store is the outbox; it belongs in the background, off the request path. Each handler catches
+  up on its own: one that fails, or throws, never holds back the others.
 
 ### 3.2 State-based
 
@@ -132,9 +134,11 @@ and event handlers reading a global log from a checkpoint. They differ in what i
   emitted events to the store's **outbox** in one transaction; the outbox is a global log with
   strictly increasing positions.
 - **Event handlers** (projections and policies) consume the outbox from a checkpoint, at least
-  once. They run inline after each command (read-your-writes) or in the background. The event
-  relay is just another event handler, so a broker never hears of a change that was not
-  committed, and never misses one that was.
+  once. They run inline after each command (read-your-writes), in the background, or — for
+  read models only — both. The event relay is just another event handler, so a broker never
+  hears of a change that was not committed, and never misses one that was; it belongs in the
+  background, off the request path. Each handler catches up on its own: one that fails, or
+  throws, never holds back the others.
 
 ## 4. Error model
 

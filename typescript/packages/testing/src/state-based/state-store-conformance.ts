@@ -1,5 +1,6 @@
 import { ConcurrencyConflict, type NewEvent, type SerializedState, type StateStore } from "@projected/application/state-based";
 import { describe, expect, it } from "vitest";
+import { followWhileWriting } from "../ordering.js";
 
 const event = (type: string, data: unknown = {}): NewEvent => ({ type, schemaVersion: 1, data });
 const state = (data: unknown, schemaVersion = 1): SerializedState => ({ schemaVersion, data });
@@ -171,6 +172,29 @@ export function stateStoreConformance(name: string, create: () => StateStore | P
       expect(all.map((e) => e.type)).toEqual(["A", "B", "C"]);
       expect(all.every((e, i) => i === 0 || e.globalPosition > (all[i - 1]?.globalPosition ?? 0))).toBe(true);
       expect(rest.map((e) => e.type)).toEqual(["B"]);
+    });
+
+    it("never lets a reader following the outbox skip an event, however saves interleave", async () => {
+      const store = await create();
+
+      const { seen, all } = await followWhileWriting(store, async (stream, index) =>
+        (await store.save(`order-${stream}`, { state: state({ index }), events: [event("A", { index })] }, { expectedVersion: index })).unwrap(),
+      );
+
+      expect(all).toHaveLength(200);
+      expect(seen).toEqual(all);
+    }, 30_000);
+
+    it("stores states and events as JSON: a date comes back as its ISO string", async () => {
+      const store = await create();
+      const at = new Date("2024-03-01T10:00:00.000Z");
+      await store.save("order-1", { state: state({ at, gone: undefined }), events: [event("A", { at })] }, { expectedVersion: 0 });
+
+      const loaded = (await store.load("order-1")).unwrap();
+      const events = (await store.readAll({ after: 0, limit: 10 })).unwrap();
+
+      expect(loaded.state?.data).toEqual({ at: "2024-03-01T10:00:00.000Z" });
+      expect(events[0]?.data).toEqual({ at: "2024-03-01T10:00:00.000Z" });
     });
 
     it("does not let callers mutate stored states or events", async () => {

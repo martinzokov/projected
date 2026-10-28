@@ -201,6 +201,16 @@ export function documentStoreConformance(name: string, create: () => DocumentSto
       expect(read.isErr() && DependencyFailure.is(read.error)).toBe(true);
     });
 
+    it("stores documents as JSON: a date comes back as its ISO string", async () => {
+      const store = await create();
+      const at = new Date("2024-03-01T10:00:00.000Z");
+      await store.collection("events", z.object({ at: z.unknown() })).put("e-1", { at });
+
+      const read = (await store.collection("events", z.object({ at: z.string() })).get("e-1")).unwrap();
+
+      expect(read).toEqual({ at: "2024-03-01T10:00:00.000Z" });
+    });
+
     it("does not share references with the caller", async () => {
       const students = (await create()).collection("students", Entry);
       const document = entry("s-1");

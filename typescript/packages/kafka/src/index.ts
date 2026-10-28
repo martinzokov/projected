@@ -121,6 +121,24 @@ export function kafkaTransport(options: KafkaTransportOptions): MessageTransport
       const stream = await consumer.consume({ topics: [topic], autocommit: false, mode: "committed", fallbackMode: "earliest" });
       let closing = false;
 
+      /**
+       * Write a dead letter, retrying with backoff until it is written or the subscription closes.
+       * The partition waits meanwhile: moving on would lose the message, and giving up would stall
+       * the partition for good while the consumer still holds it.
+       */
+      const deadLetter = async (write: () => Promise<void>): Promise<boolean> => {
+        for (let attempt = 1; !closing; attempt++) {
+          try {
+            await write();
+            return true;
+          } catch (error) {
+            onError(error);
+            await sleep(retryDelay(Math.min(attempt, maxAttempts)));
+          }
+        }
+        return false;
+      };
+
       const deliver = async (message: Message): Promise<Disposition> => {
         try {
           return await handler(message);
@@ -157,13 +175,11 @@ export function kafkaTransport(options: KafkaTransportOptions): MessageTransport
           if (closing && disposition === "retry") break;
           if (disposition !== "ack") {
             const reason = disposition === "dead-letter" ? "rejected" : `failed ${maxAttempts} deliveries`;
-            try {
-              await send(deadLetterTopic(topic), base.key ?? base.id, record.value, { ...headers, [DEAD_LETTER_REASON_HEADER]: reason });
-            } catch (error) {
-              // Not committing keeps the message, so it is retried after a restart rather than lost.
-              onError(error);
-              break;
-            }
+            const parked = await deadLetter(() =>
+              send(deadLetterTopic(topic), base.key ?? base.id, record.value, { ...headers, [DEAD_LETTER_REASON_HEADER]: reason }),
+            );
+            // Closing before the dead letter was written: uncommitted, the message comes back after a restart.
+            if (!parked) break;
           }
           await record.commit();
         }

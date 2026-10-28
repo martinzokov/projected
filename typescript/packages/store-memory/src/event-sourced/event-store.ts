@@ -12,6 +12,7 @@ import {
   type StreamSlice,
 } from "@projected/application/event-sourced";
 import { randomUUID } from "node:crypto";
+import { asJson } from "../json.js";
 
 export interface InMemoryEventStoreOptions {
   readonly clock?: Clock;
@@ -73,8 +74,8 @@ export function inMemoryEventStore(options: InMemoryEventStoreOptions = {}): InM
           type: event.type,
           schemaVersion: event.schemaVersion,
           // Stored as JSON, as a real store would, so nothing shares references with the caller.
-          data: structuredClone(event.data),
-          metadata: structuredClone(event.metadata ?? {}),
+          data: asJson(event.data),
+          metadata: asJson(event.metadata ?? {}),
           recordedAt,
         }),
       );

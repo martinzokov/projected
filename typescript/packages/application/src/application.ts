@@ -1,4 +1,4 @@
-import { Result, isPanic, isTaggedError, panic, z, type BusinessError } from "@projected/domain";
+import { Result, isTaggedError, panic, z, type BusinessError } from "@projected/domain";
 import type {
   Access,
   AnyContracts,
@@ -14,6 +14,7 @@ import {
   IdempotencyKeyReused,
   InvalidInput,
   OperationDefect,
+  defectReason,
   RequestInProgress,
   Unauthenticated,
   UnknownOperation,
@@ -23,7 +24,7 @@ import {
   type InfrastructureError,
   type OperateError,
 } from "./errors.js";
-import { catchUp, type CatchUpReport, type EventHandler } from "./event-handler.js";
+import { catchUp, type CatchUpReport, type EventHandler, type EventHandlingError } from "./event-handler.js";
 import { canonicalJson, sha256 } from "./fingerprint.js";
 import { OPERATE, defineOperatorTask, type OperatorTask } from "./operator.js";
 import type {
@@ -80,11 +81,13 @@ export interface EventHandlingOptions {
   readonly store: EventLog;
   readonly checkpoints: CheckpointStore;
   /**
-   * Catch handlers up after every successful command, before responding. Gives
-   * read-your-writes consistency at the cost of latency; turn it off when a background
-   * poller (`@projected/runtime`) runs them instead. Defaults to true.
+   * Which handlers catch up after every successful command, before it responds: all of them
+   * (`true`, the default), none (`false`), or those named. Inline gives read-your-writes
+   * consistency at the cost of latency, so keep it to read models a caller reads right after
+   * writing; relays to a broker belong to a background poller (`startPolling` from
+   * `@projected/runtime`), which runs every handler and picks up whatever an inline run left.
    */
-  readonly inline?: boolean;
+  readonly inline?: boolean | readonly string[];
 }
 
 export interface IdempotencyOptions {
@@ -107,10 +110,17 @@ export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
   readonly idempotency?: IdempotencyOptions;
   /** Tracing. Defaults to {@link noTelemetry}. Transports use the same instance. */
   readonly telemetry?: Telemetry;
-  /** Called for every defect, before it is turned into an opaque error. Wire your logger here. */
+  /**
+   * Called for every defect — an operation, task or event handler that threw or broke its
+   * contract — before it is turned into an opaque error. Wire your logger here.
+   */
   readonly onDefect?: (defect: OperationDefect) => void;
-  /** Called when an inline catch-up fails. The command itself has already succeeded. */
-  readonly onEventHandlingError?: (error: InfrastructureError) => void;
+  /**
+   * Called for each event handler an inline catch-up could not bring up to date, with its name.
+   * The command has succeeded either way; the handler resumes at the failed event next time.
+   * Defects go to {@link onDefect} instead.
+   */
+  readonly onEventHandlingError?: (error: InfrastructureError, handler: string) => void;
   /** What the service cannot serve without, asked by {@link Application.health}. */
   readonly readiness?: readonly ReadinessCheck[];
   /**
@@ -148,8 +158,11 @@ export interface Application<C extends AnyContracts = AnyContracts> {
     input: RequestOf<Op>,
     metadata?: Partial<Metadata>,
   ): Promise<Result<OutputOf<Op>, ErrorOf<Op> | DispatchError>>;
-  /** Feed every event handler the events recorded since its checkpoint. */
-  catchUp(): Promise<Result<readonly CatchUpReport[], InfrastructureError>>;
+  /**
+   * Feed every event handler the events recorded since its checkpoint. Every handler gets its
+   * turn even when another fails; the first failure is returned.
+   */
+  catchUp(): Promise<Result<readonly CatchUpReport[], EventHandlingError>>;
   /** Ask every readiness check; `draining` from the moment {@link drain} is called. */
   health(): Promise<HealthReport>;
   /**
@@ -184,21 +197,6 @@ export function checkAccess(
 }
 
 /**
- * Why something went wrong, for the defect's message. Combinators wrap a panic in their own
- * ("mapError callback threw"), so the reason worth reading is the deepest panic in the cause
- * chain — or, when nothing panicked, the deepest error.
- */
-function rootReason(cause: unknown): string | undefined {
-  let deepestPanic: string | undefined;
-  let deepest: string | undefined;
-  for (let current = cause, depth = 0; current instanceof Error && depth < 10; current = current.cause, depth++) {
-    deepest = current.message;
-    if (isPanic(current)) deepestPanic = current.message;
-  }
-  return deepestPanic ?? deepest;
-}
-
-/**
  * Bind contracts to handlers. This is the only place handlers are registered, and it lives in
  * the composition root (`src/infrastructure/config`).
  *
@@ -228,26 +226,61 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
   register("query", options.queries, contracts.queries);
 
   const eventHandling = options.eventHandling;
+  const allHandlers = eventHandling?.handlers ?? [];
+  const inline = eventHandling?.inline ?? true;
+  if (typeof inline !== "boolean") {
+    const unknown = inline.filter((name) => !allHandlers.some((handler) => handler.name === name));
+    if (unknown.length > 0) panic(`createApplication: eventHandling.inline names no event handler: ${unknown.join(", ")}`);
+  }
+  const inlineHandlers = inline === true ? allHandlers : inline === false ? [] : allHandlers.filter((handler) => inline.includes(handler.name));
+
+  /** A handler that stopped: counted, and a defect reported like any other. */
+  const handlerFailed = (handler: EventHandler, error: EventHandlingError) => {
+    telemetry.count("projected.event_handler.failures", 1, { "projected.event_handler": handler.name, "projected.error.type": error._tag });
+    if (OperationDefect.is(error)) options.onDefect?.(error);
+  };
+  /** Catch one handler up. A store that throws is a defect, not a rejection. */
+  const catchUpOne = (handler: EventHandler, store: EventLog, checkpoints: CheckpointStore) =>
+    catchUp(handler, store, checkpoints, { telemetry }).catch((cause: unknown) => {
+      const reason = defectReason(cause);
+      return Result.err(
+        new OperationDefect({ operation: `event-handler ${handler.name}`, message: `catch-up threw${reason === undefined ? "" : `: ${reason}`}`, cause }),
+      );
+    });
+
   let catchUpQueue: Promise<unknown> = Promise.resolve();
-  const runCatchUp = (): Promise<Result<readonly CatchUpReport[], InfrastructureError>> => {
+  const runCatchUp = (
+    handlers: readonly EventHandler[],
+    onFailure?: (handler: EventHandler, error: EventHandlingError) => void,
+  ): Promise<Result<readonly CatchUpReport[], EventHandlingError>> => {
     // Serialized so that concurrent requests never feed the same events to a handler twice.
-    const run = catchUpQueue.then(async () => {
+    const run = catchUpQueue.then(async (): Promise<Result<readonly CatchUpReport[], EventHandlingError>> => {
       if (eventHandling === undefined) return Result.ok([]);
       const reports: CatchUpReport[] = [];
-      for (const handler of eventHandling.handlers) {
-        const report = await catchUp(handler, eventHandling.store, eventHandling.checkpoints, { telemetry });
-        if (report.isErr()) return Result.err(report.error);
+      let failure: EventHandlingError | undefined;
+      // Every handler gets its turn: a broken read model must not hold back a relay.
+      for (const handler of handlers) {
+        const report = await catchUpOne(handler, eventHandling.store, eventHandling.checkpoints);
+        if (report.isErr()) {
+          handlerFailed(handler, report.error);
+          onFailure?.(handler, report.error);
+          failure ??= report.error;
+          continue;
+        }
         if (report.value.handled > 0) telemetry.count("projected.events.handled", report.value.handled, { "projected.event_handler": handler.name });
         reports.push(report.value);
       }
-      return Result.ok(reports);
+      return failure === undefined ? Result.ok(reports) : Result.err(failure);
     });
     catchUpQueue = run.catch(() => undefined);
     return run;
   };
+  const inlineFailed = (handler: EventHandler, error: EventHandlingError) => {
+    if (!OperationDefect.is(error)) options.onEventHandlingError?.(error, handler.name);
+  };
 
   const defect = (contract: AnyOperationContract, message: string, cause?: unknown): Result<never, OperationDefect> => {
-    const reason = rootReason(cause);
+    const reason = defectReason(cause);
     const full = reason === undefined || reason === message ? message : `${message}: ${reason}`;
     const error = new OperationDefect({ operation: `${contract.kind} ${contract.key}`, message: full, cause });
     options.onDefect?.(error);
@@ -285,10 +318,8 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
     if (outcome.isOk()) {
       const output = contract.output.safeParse(outcome.value);
       if (!output.success) return defect(contract, "handler output does not match the contract", output.error);
-      if (contract.kind === "command" && eventHandling !== undefined && eventHandling.inline !== false) {
-        const caughtUp = await runCatchUp();
-        if (caughtUp.isErr()) options.onEventHandlingError?.(caughtUp.error);
-      }
+      // Failures are reported as they happen; the command has succeeded either way.
+      if (contract.kind === "command" && inlineHandlers.length > 0) await runCatchUp(inlineHandlers, inlineFailed);
       return Result.ok({ status: "ok", value: output.data });
     }
     const error = outcome.error;
@@ -347,7 +378,10 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
   let draining = false;
   const track = <T>(work: Promise<T>): Promise<T> => {
     inFlight.add(work);
-    void work.finally(() => inFlight.delete(work));
+    // Both callbacks, not `finally`: a derived promise that rejects again would go unhandled
+    // and end the process, even though the caller handles `work` itself.
+    const settled = () => inFlight.delete(work);
+    void work.then(settled, settled);
     return work;
   };
 
@@ -426,14 +460,16 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
         const handler = eventHandling?.handlers.find((candidate) => candidate.name === name);
         if (eventHandling === undefined || handler === undefined) return Result.err(noSuchHandler(name));
         // In the catch-up queue, so no catch-up in this process reads the checkpoint mid-reset.
-        const rebuilt = catchUpQueue.then(async (): Promise<Result<CatchUpReport, InfrastructureError>> => {
+        const rebuilt = catchUpQueue.then(async (): Promise<Result<CatchUpReport, EventHandlingError>> => {
           if (handler.reset !== undefined) {
             const reset = await handler.reset();
             if (reset.isErr()) return Result.err(reset.error);
           }
           const rewound = await eventHandling.checkpoints.save(handler.name, 0);
           if (rewound.isErr()) return Result.err(rewound.error);
-          return catchUp(handler, eventHandling.store, eventHandling.checkpoints, { telemetry });
+          const report = await catchUpOne(handler, eventHandling.store, eventHandling.checkpoints);
+          if (report.isErr()) handlerFailed(handler, report.error);
+          return report;
         });
         catchUpQueue = rebuilt.catch(() => undefined);
         return rebuilt;
@@ -464,7 +500,7 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
           try {
             return await task.run(parsed.data, { metadata: completeMetadata(given) });
           } catch (cause) {
-            const reason = rootReason(cause);
+            const reason = defectReason(cause);
             const error = new OperationDefect({ operation, message: `task threw${reason === undefined ? "" : `: ${reason}`}`, cause });
             options.onDefect?.(error);
             return Result.err(error);
@@ -568,7 +604,7 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       const error = decodeWireError(contract, result.error);
       return error === undefined ? defect(contract, `cannot decode error ${result.error.type}`) : Result.err(error);
     },
-    catchUp: () => track(runCatchUp()),
+    catchUp: () => track(runCatchUp(allHandlers)),
     health,
     drain,
     backlog,

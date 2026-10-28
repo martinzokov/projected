@@ -1,4 +1,5 @@
 import { DependencyFailure, Result, type DocumentCollection, type DocumentStore, type z } from "@projected/application";
+import { asJson } from "./json.js";
 
 /** Numbers numerically, everything else by code point — the order every store must agree on. */
 const compare = (left: unknown, right: unknown): number => {
@@ -17,7 +18,7 @@ export function inMemoryDocumentStore(): DocumentStore {
     collections.set(name, documents);
 
     const decode = (id: string, raw: unknown): Result<Doc, DependencyFailure> => {
-      const parsed = schema.safeParse(structuredClone(raw));
+      const parsed = schema.safeParse(asJson(raw));
       return parsed.success
         ? Result.ok(parsed.data as Doc)
         : Result.err(
@@ -33,7 +34,7 @@ export function inMemoryDocumentStore(): DocumentStore {
     return {
       get: async (id) => (documents.has(id) ? decode(id, documents.get(id)) : Result.ok(undefined)),
       put: async (id, document) => {
-        documents.set(id, structuredClone(document));
+        documents.set(id, asJson(document));
         return Result.ok(undefined);
       },
       delete: async (id) => {

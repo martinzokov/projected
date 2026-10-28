@@ -1,4 +1,4 @@
-import { TaggedError } from "@projected/domain";
+import { TaggedError, isPanic } from "@projected/domain";
 
 /**
  * Infrastructure errors: failures of the machinery around the business logic, not of a business
@@ -70,6 +70,21 @@ export class OperationDefect extends TaggedError("OperationDefect")<{
   message: string;
   cause?: unknown;
 }> {}
+
+/**
+ * Why something went wrong, for a defect's message. Combinators wrap a panic in their own
+ * ("mapError callback threw"), so the reason worth reading is the deepest panic in the cause
+ * chain — or, when nothing panicked, the deepest error.
+ */
+export function defectReason(cause: unknown): string | undefined {
+  let deepestPanic: string | undefined;
+  let deepest: string | undefined;
+  for (let current = cause, depth = 0; current instanceof Error && depth < 10; current = current.cause, depth++) {
+    deepest = current.message;
+    if (isPanic(current)) deepestPanic = current.message;
+  }
+  return deepestPanic ?? deepest;
+}
 
 /** The operation is not public and the request carries no (valid) credentials. */
 export class Unauthenticated extends TaggedError("Unauthenticated")<{

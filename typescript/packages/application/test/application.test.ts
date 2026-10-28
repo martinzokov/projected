@@ -327,21 +327,21 @@ describe("aggregateRepository", () => {
 });
 
 describe("event handlers", () => {
-  const titleProjection = (titles: Map<string, string>) =>
-    defineEventHandler({
-      name: "open-ticket-titles",
-      events: [TicketOpened, TicketClosed],
-      handle: {
-        TicketOpened: ({ data }) => {
-          titles.set(data.ticketId, data.title);
-          return Result.ok(undefined);
-        },
-        TicketClosed: ({ data }) => {
-          titles.delete(data.ticketId);
-          return Result.ok(undefined);
-        },
+  const titleHandlerOptions = (titles: Map<string, string>) => ({
+    name: "open-ticket-titles",
+    events: [TicketOpened, TicketClosed] as const,
+    handle: {
+      TicketOpened: ({ data }: { data: { ticketId: string; title: string } }) => {
+        titles.set(data.ticketId, data.title);
+        return Result.ok(undefined);
       },
-    });
+      TicketClosed: ({ data }: { data: { ticketId: string } }) => {
+        titles.delete(data.ticketId);
+        return Result.ok(undefined);
+      },
+    },
+  });
+  const titleProjection = (titles: Map<string, string>) => defineEventHandler(titleHandlerOptions(titles));
 
   function projectedApp(titles: Map<string, string>, inline = true) {
     const store = inMemoryEventStore();
@@ -417,6 +417,95 @@ describe("event handlers", () => {
     expect(first.isErr()).toBe(true);
     expect(second.unwrap()[0]?.position).toBe(2);
     expect(seen).toEqual(["t-1", "t-2"]);
+  });
+
+  /** A ticket desk whose `handlers` follow its events, with what reached onDefect and onEventHandlingError. */
+  function deskWith(handlers: ReturnType<typeof defineEventHandler>[], inline: boolean | readonly string[] = true, store: EventStore = inMemoryEventStore()) {
+    const defects: OperationDefect[] = [];
+    const failures: string[] = [];
+    const app = createApplication(ticketContracts, {
+      ids: sequentialIds(),
+      commands: { "open-ticket@1": openTicket({ tickets: tickets(store) }), "close-ticket@1": closeTicket({ tickets: tickets(store) }) },
+      queries: { "open-ticket-titles@1": openTicketTitles({ titles: () => [] }) },
+      eventHandling: { handlers, store, checkpoints: inMemoryCheckpointStore(), inline },
+      onDefect: (defect) => defects.push(defect),
+      onEventHandlingError: (error, handler) => failures.push(`${handler}: ${error.message}`),
+    });
+    return { app, defects, failures };
+  }
+  const throwing = defineEventHandler({
+    name: "throwing",
+    events: [TicketOpened],
+    handle: {
+      TicketOpened: () => {
+        throw new Error("projection bug");
+      },
+    },
+  });
+  const unreachable = defineEventHandler({
+    name: "mailer",
+    events: [TicketOpened],
+    handle: { TicketOpened: () => Result.err(new DependencyUnavailable({ dependency: "mailer", message: "mailer: down" })) },
+  });
+
+  it("treat a handler that throws as a defect: the command still succeeds, nothing escapes", async () => {
+    const titles = new Map<string, string>();
+    const { app, defects } = deskWith([throwing, titleProjection(titles)]);
+
+    const opened = await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" });
+
+    expect(opened.isOk()).toBe(true);
+    expect(defects.map((defect) => defect.message)).toEqual(["throwing threw on TicketOpened ticket-t-1@1: projection bug"]);
+    expect(titles.get("t-1")).toBe("Printer");
+  });
+
+  it("give every handler its turn when one fails, and return the first failure", async () => {
+    const titles = new Map<string, string>();
+    const { app } = deskWith([unreachable, titleProjection(titles)], false);
+    await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" });
+
+    const caughtUp = await app.catchUp();
+
+    expect(caughtUp.isErr() && caughtUp.error.message).toBe("mailer: down");
+    expect(titles.get("t-1")).toBe("Printer");
+  });
+
+  it("report each handler an inline catch-up could not bring up to date, by name", async () => {
+    const { app, failures, defects } = deskWith([unreachable]);
+
+    await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" });
+
+    expect(failures).toEqual(["mailer: mailer: down"]);
+    expect(defects).toEqual([]);
+  });
+
+  it("catch up inline only the handlers named, leaving the rest to catchUp()", async () => {
+    const titles = new Map<string, string>();
+    const later = new Map<string, string>();
+    const { app } = deskWith([titleProjection(titles), defineEventHandler({ ...titleHandlerOptions(later), name: "later" })], ["open-ticket-titles"]);
+
+    await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" });
+    const before = later.size;
+    await app.catchUp();
+
+    expect(titles.get("t-1")).toBe("Printer");
+    expect(before).toBe(0);
+    expect(later.get("t-1")).toBe("Printer");
+  });
+
+  it("refuse an inline list that names no handler", () => {
+    expect(() => deskWith([titleProjection(new Map())], ["open-ticket-title"])).toThrow(/inline names no event handler: open-ticket-title/);
+  });
+
+  it("report a store that throws during catch-up as a defect, never a rejection", async () => {
+    const store = inMemoryEventStore();
+    const broken: EventStore = { ...store, readAll: () => Promise.reject(new Error("driver bug")) };
+    const { app, defects } = deskWith([titleProjection(new Map())], true, broken);
+
+    const opened = await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" });
+
+    expect(opened.isOk()).toBe(true);
+    expect(defects[0]?.message).toMatch(/^catch-up threw: /);
   });
 });
 

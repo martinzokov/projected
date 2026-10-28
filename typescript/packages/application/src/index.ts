@@ -97,6 +97,7 @@ export {
   handleTraced,
   type CatchUpOptions,
   type CatchUpReport,
+  type EventHandlingError,
   type DefineEventHandlerOptions,
   type EventHandler,
   type EventHandlerFunctions,

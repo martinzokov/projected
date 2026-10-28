@@ -182,6 +182,8 @@ ${s.doc}  readonly ${s.name}: ${s.type};
   /** What the service cannot serve without, reported by \`GET /health/ready\`. */
   readonly readiness?: readonly ReadinessCheck[];
   readonly onDefect?: (defect: Error) => void;
+  /** An event handler the request path could not bring up to date; the poller retries it. */
+  readonly onEventHandlingError?: (error: Error, handler: string) => void;
 }
 
 /**
@@ -203,6 +205,7 @@ export function compose${Name}(infrastructure: ${Name}Infrastructure) {
     readiness: infrastructure.readiness ?? [],
     ...(telemetry === undefined ? {} : { telemetry }),
     ...(infrastructure.onDefect === undefined ? {} : { onDefect: infrastructure.onDefect }),
+    ...(infrastructure.onEventHandlingError === undefined ? {} : { onEventHandlingError: infrastructure.onEventHandlingError }),
   });
 }
 `,
@@ -305,7 +308,7 @@ import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, r
 import { httpHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
-import { monitorBacklog, randomIds, shutdownGracefully, systemClock } from "@projected/runtime";
+import { monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { compose${Name} } from "./${name}.js";
 
@@ -314,7 +317,14 @@ const infrastructure = await environment(clock);
 // Spans go wherever the OpenTelemetry SDK sends them; register one (e.g. @opentelemetry/sdk-node) to export.
 const telemetry = openTelemetry();
 
-const app = compose${Name}({ ...infrastructure, clock, ids: randomIds(), telemetry, onDefect: (defect) => console.error("defect", defect) });
+const app = compose${Name}({
+  ...infrastructure,
+  clock,
+  ids: randomIds(),
+  telemetry,
+  onDefect: (defect) => console.error("defect", defect),
+  onEventHandlingError: (error, handler) => console.error(\`event handler \${handler}\`, error.message),
+});
 
 // Signed-in users hold the permissions returned here. Admins operate the service (\`projected operate\`);
 // add the permissions your operations require.
@@ -332,6 +342,10 @@ const server = await serve(
 );
 console.log(\`${name} is listening on \${server.url} — OpenAPI document at \${server.url}/openapi.json\`);
 
+// Event handlers catch up in the background too, picking up whatever a failed inline catch-up
+// left behind. A relay to a broker belongs here only: leave it out of \`eventHandling.inline\`.
+const poller = startPolling(app, { onError: (error) => console.error("event handling", error.message) });
+
 // Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
 const backlog = monitorBacklog(app, { clock, onError: (error) => console.error("backlog", error.message) });
 
@@ -339,7 +353,7 @@ const backlog = monitorBacklog(app, { clock, onError: (error) => console.error("
 // requests, finish those in flight, then close connections.
 shutdownGracefully({
   app,
-  intake: [server, backlog],
+  intake: [server, poller, backlog],
   close: infrastructure.close,
   graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
   log: (message) => console.log(message),

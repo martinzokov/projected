@@ -1,5 +1,5 @@
 import { Result, panic, type AnyEventDefinition, type DomainEvent, type z } from "@projected/domain";
-import type { InfrastructureError } from "./errors.js";
+import { OperationDefect, defectReason, type InfrastructureError } from "./errors.js";
 import type { CheckpointStore, EventLog, ExecutionContext, RecordedEvent } from "./ports.js";
 import { noTelemetry, traceCarrier, type Telemetry } from "./telemetry.js";
 
@@ -7,6 +7,12 @@ const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 type MaybePromise<T> = T | Promise<T>;
 type DefinitionFor<Events extends readonly AnyEventDefinition[], Type> = Extract<Events[number], { readonly type: Type }>;
+
+/**
+ * Why an event handler stopped: an infrastructure error, which a later catch-up may get past, or
+ * a defect — the handler threw, or the event no longer decodes — which needs a fix.
+ */
+export type EventHandlingError = InfrastructureError | OperationDefect;
 
 /** A decoded event together with where and when it was recorded. */
 export interface HandledEvent<Type extends string = string, Data = unknown> extends DomainEvent<Type, Data> {
@@ -142,12 +148,16 @@ function eventContext(recorded: RecordedEvent): ExecutionContext["metadata"] {
   };
 }
 
-/** Run one handler on one event inside a span that continues the event's trace. */
+/**
+ * Run one handler on one event inside a span that continues the event's trace. A handler that
+ * throws — or meets an event it cannot decode — gives an {@link OperationDefect}, never a
+ * rejection: one bad handler must not take the process down.
+ */
 export function handleTraced(
   handler: EventHandler,
   recorded: RecordedEvent,
   telemetry: Telemetry,
-): Promise<Result<void, InfrastructureError>> {
+): Promise<Result<void, EventHandlingError>> {
   return telemetry.continueFrom(eventContext(recorded).trace, () =>
     telemetry.span(
       `${handler.name} ${recorded.type}`,
@@ -161,8 +171,20 @@ export function handleTraced(
           "projected.global_position": recorded.globalPosition,
         },
       },
-      async (span) => {
-        const outcome = await handler.handle(recorded);
+      async (span): Promise<Result<void, EventHandlingError>> => {
+        let outcome: Result<void, EventHandlingError>;
+        try {
+          outcome = await handler.handle(recorded);
+        } catch (cause) {
+          const reason = defectReason(cause);
+          outcome = Result.err(
+            new OperationDefect({
+              operation: `event-handler ${handler.name}`,
+              message: `${handler.name} threw on ${recorded.type} ${recorded.stream}@${recorded.streamVersion}${reason === undefined ? "" : `: ${reason}`}`,
+              cause,
+            }),
+          );
+        }
         if (outcome.isErr()) span.fail(outcome.error.message);
         return outcome;
       },
@@ -172,14 +194,15 @@ export function handleTraced(
 
 /**
  * Feed a handler every event recorded since its checkpoint, in global order, saving progress
- * after each batch. Stops at the first failure, keeping the checkpoint at the last success.
+ * after each batch. Stops at the first failure, keeping the checkpoint at the last success, so
+ * the failing event is the first one the next catch-up offers.
  */
 export async function catchUp(
   handler: EventHandler,
   store: EventLog,
   checkpoints: CheckpointStore,
   options: CatchUpOptions = {},
-): Promise<Result<CatchUpReport, InfrastructureError>> {
+): Promise<Result<CatchUpReport, EventHandlingError>> {
   const batchSize = options.batchSize ?? 100;
   const telemetry = options.telemetry ?? noTelemetry;
   return Result.gen(async function* () {
