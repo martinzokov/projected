@@ -48,14 +48,9 @@ jobs:
           cache-dependency-path: typescript/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # `projected mutate` in each example: fails below the threshold in its projected.json.
+      # `projected mutate` in each example: fails below the threshold in its projected.json, and
+      # prints every surviving mutant in the log.
       - run: pnpm mutate
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mutation-reports
-          path: typescript/examples/*/reports/mutation/
-          if-no-files-found: ignore
 
   vendor:
     name: Vendored anti-slop is untouched
