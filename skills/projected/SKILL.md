@@ -116,8 +116,8 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
    work, `projected mutate` shows which behaviour no test checks yet.
 6. **Regenerate and lock**: `projected openapi`, `projected contracts --update` and
    `projected docs`. Commit `openapi.json`, `contracts.lock.json` and `docs/catalog.md`.
-7. **Verify**: run the project's check (`pnpm check` / `projected check`) and the tests. Done
-   only when both are green.
+7. **Verify**: `projected guard --full` — compile, tests and `projected check`. Done only when
+   it is green; `projected guard` after each edit catches a broken rule while it is still small.
 
 `POST /commands/withdraw-student/version/1` now exists: validated, restricted to callers with
 `students:manage`, protected against duplicate retries (`Idempotency-Key`), traced, documented in
@@ -192,6 +192,8 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 | `projected vendor add <name> --spec <url\|file>` | generate a typed, Result-returning client for a third-party OpenAPI |
 | `projected vendor update <name>` | take a vendor's new spec (refuses breaking changes unless accepted) |
 | `projected mutate` | mutation-test the domain and use cases; lists the changes no test notices, fails below the threshold |
+| `projected guard` / `projected guard --full` | the rules on what you changed (after every edit) / the whole gate (before you call it done) |
+| `projected agents install` | AGENTS.md, skills and hooks for Claude Code, Cursor and Codex, and a pre-commit hook |
 | `projected operate [task] --url <service>` | run an operator task on a running service (`rebuild`, `backlog`, `replay-dead-letters`); needs a `projected:operate` token |
 | `tsc -b` | compile every layer; boundary violations are compile errors |
 

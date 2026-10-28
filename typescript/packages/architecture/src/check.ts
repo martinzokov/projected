@@ -10,6 +10,11 @@ import { checkLayout, type Violation } from "./layout.js";
 export interface CheckOptions extends DependencyCruiserOptions {
   /** Levels for the configurable design rules. Defaults to the project's projected.json. */
   readonly designRules?: DesignRules;
+  /**
+   * Check these files only (relative to the root) — what an agent just changed — and the modules
+   * they import. The layout is always checked whole. Files outside `src/` and `test/` are ignored.
+   */
+  readonly files?: readonly string[];
 }
 
 export interface CheckReport {
@@ -35,6 +40,9 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
     return { violations, warnings: [], checked: { dependencyCruiser: 0, eslint: 0 } };
   }
 
+  const scoped = options.files?.filter((file) => /^(src|test)\/.*\.(ts|mts|cts|tsx)$/.test(file) && existsSync(join(root, file)));
+  if (scoped !== undefined && scoped.length === 0) return { violations, warnings: [], checked: { dependencyCruiser: 0, eslint: 0 } };
+
   const comments = new Map(dependencyCruiserRules(options).map((rule) => [rule.name, rule.comment ?? ""]));
   const config = dependencyCruiserConfig(options);
   const { options: cruiseOptions = {} } = config;
@@ -43,7 +51,7 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
   // runners, mutation testing) may not change it at all.
   const result = await cruise(
     // Tests too, so that test code cannot reach for the other flavour either.
-    existsSync(join(root, "test")) ? ["src", "test"] : ["src"],
+    scoped !== undefined ? [...scoped] : existsSync(join(root, "test")) ? ["src", "test"] : ["src"],
     { ...rest, baseDir: root, ruleSet: { forbidden: config.forbidden ?? [] }, validate: true, outputType: "json" },
     {
       extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] },
@@ -72,7 +80,8 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
   const warnings: Violation[] = [];
   // Typed rules keep a TypeScript program per tsconfig in a process-wide cache; release them, or
   // a process that checks many projects (a test suite, an agent loop) runs out of memory.
-  const results = await eslint.lintFiles(["src/**/*.{ts,mts,cts,tsx}"]).finally(() => clearCaches());
+  const lintTargets = scoped === undefined ? ["src/**/*.{ts,mts,cts,tsx}"] : scoped.filter((file) => file.startsWith("src/"));
+  const results = lintTargets.length === 0 ? [] : await eslint.lintFiles(lintTargets).finally(() => clearCaches());
   const designRules = new Set(Object.keys(DESIGN_RULE_DEFAULTS).map((rule) => `projected/${rule}`));
   for (const result of results) {
     for (const message of result.messages) {
@@ -87,7 +96,7 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
   }
 
   const checked = { dependencyCruiser: cruisedFiles, eslint: results.length };
-  if (checked.dependencyCruiser === 0 || checked.eslint === 0) {
+  if (scoped === undefined && (checked.dependencyCruiser === 0 || checked.eslint === 0)) {
     violations.push({
       tool: checked.dependencyCruiser === 0 ? "dependency-cruiser" : "eslint",
       rule: "checked-nothing",

@@ -55,6 +55,21 @@ describe("the clean fixture", () => {
   });
 });
 
+describe("checking only the files that changed", () => {
+  it("finds the violations in the files it is given, and only those", async () => {
+    const leak = `import { Increment } from "../application/port/driving/contracts.js";\nexport const x = Increment;\nexport const now = Date.now();\n`;
+    const root = fixture({ "src/domain/leak.ts": leak });
+
+    const elsewhere = await checkArchitecture(root, { files: ["src/domain/counter.ts"] });
+    const changed = await checkArchitecture(root, { files: ["src/domain/leak.ts"] });
+    const nothingToCheck = await checkArchitecture(root, { files: ["README.md"] });
+
+    expect(rules(elsewhere.violations)).toEqual([]);
+    expect(rules(changed.violations)).toEqual(["dependency-cruiser/domain-is-pure", "eslint/no-restricted-syntax"]);
+    expect(nothingToCheck.violations).toEqual([]);
+  });
+});
+
 describe("import boundaries (dependency-cruiser)", () => {
   const cases: Array<[string, Edit, string]> = [
     [

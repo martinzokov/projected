@@ -1,6 +1,8 @@
 import { parseArgs } from "node:util";
 import { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
 import { docs } from "./docs/commands.js";
+import { installAgents } from "./agents.js";
+import { HARNESSES, guard, type Harness } from "./guard.js";
 import { mutate } from "./mutate.js";
 import { operate } from "./operate.js";
 import { loadProject } from "./project.js";
@@ -25,6 +27,13 @@ Commands:
                         a driven port returning Results, and an adapter for it
   new event-handler <name> --on <Event,...> [--port <Port>]
                         an event handler, registered in the composition root
+  guard [--full] [--strict] [--staged] [--files <a,b>] [--hook <harness>]
+                        what a coding agent runs as it works: the rules on the files that
+                        changed (from git), or with --full the whole gate (compile, tests,
+                        check). --hook answers a claude-code, cursor or codex hook.
+  agents install [--harness claude-code,cursor,codex] [--no-git-hook]
+                        set the project up for coding agents: AGENTS.md, the skills, each
+                        harness's rules and hooks, and a git pre-commit hook
   operate [<task>] --url <service> [--input <json>] [--token <token>]
                         run an operator task on a running service (rebuild, backlog,
                         replay-dead-letters, ...); without a task, list them. The token
@@ -56,8 +65,19 @@ Configuration: projected.json in the project root. "flavour" ("event-sourced" or
 securitySchemes, vendors, rules (design rule levels), docs (catalog path) and mutation
 (threshold, files) are optional.`;
 
-/** Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error. */
-export async function run(argv: readonly string[], print: (line: string) => void): Promise<number> {
+/** The whole of standard input, for hook events; empty when it is a terminal. */
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error — or, for
+ * `guard --hook`, what the agent's harness reads (2 hands stderr to the agent).
+ */
+export async function run(argv: readonly string[], print: (line: string) => void, printError: (line: string) => void = print): Promise<number> {
   let parsed;
   try {
     parsed = parseArgs({
@@ -80,6 +100,12 @@ export async function run(argv: readonly string[], print: (line: string) => void
         operations: { type: "string" },
         adapter: { type: "string" },
         url: { type: "string" },
+        full: { type: "boolean", default: false },
+        staged: { type: "boolean", default: false },
+        files: { type: "string" },
+        hook: { type: "string" },
+        harness: { type: "string" },
+        "no-git-hook": { type: "boolean", default: false },
         input: { type: "string" },
         token: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
@@ -126,6 +152,32 @@ export async function run(argv: readonly string[], print: (line: string) => void
         () => docs(project, { check: true }),
       );
       break;
+    case "guard": {
+      const hook = values.hook as Harness | undefined;
+      if (hook !== undefined && !HARNESSES.includes(hook)) {
+        print(`Unknown harness: ${hook} — ${HARNESSES.join(", ")}`);
+        return 2;
+      }
+      const outcome = await guard(project, {
+        full: values.full,
+        strict: values.strict,
+        staged: values.staged,
+        files: values.files?.split(",").filter((file) => file !== ""),
+        hook,
+        stdin: hook === undefined ? "" : await readStdin(),
+      });
+      outcome.stdout.forEach((line) => print(line));
+      outcome.stderr.forEach((line) => printError(line));
+      return outcome.exitCode;
+    }
+    case "agents": {
+      if (subcommand !== "install") {
+        print(`Unknown agents command: ${subcommand ?? "(none)"} — install`);
+        return 2;
+      }
+      const harnesses = values.harness?.split(",").filter((h) => h !== "") as Harness[] | undefined;
+      return finish(installAgents(project, { ...(harnesses === undefined ? {} : { harnesses }), gitHook: !values["no-git-hook"] }));
+    }
     case "new": {
       const generate = {
         aggregate: () => newAggregate(project, target),

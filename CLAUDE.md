@@ -41,6 +41,10 @@ docker compose up -d --wait   # in typescript/: Postgres :55432, Kafka :9092, NA
 pnpm test:integration         # sets PROJECTED_TEST_DATABASE_URL, _KAFKA_BROKERS, _NATS_URL
 ```
 
+`pnpm evals` (on demand: needs Claude Code, Codex or Cursor signed in) gives real agents the tasks
+in `typescript/evals/tasks/` and grades what they leave. Run it after changing a skill, a
+generator or a rule's message.
+
 ## Rules for framework changes
 
 - **TypeScript stays on 6.0.x.** TypeScript 7 has no JavaScript compiler API; typescript-eslint

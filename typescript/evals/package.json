@@ -1,0 +1,14 @@
+{
+  "name": "@projected/evals",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Measures how well projected's skills and guardrails steer coding agents: real tasks on copies of the examples, graded by the gate.",
+  "type": "module",
+  "scripts": {
+    "evals": "tsx src/run.ts"
+  },
+  "dependencies": {
+    "@projected/cli": "workspace:*",
+    "tsx": "^4.23.15"
+  }
+}

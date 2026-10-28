@@ -1,0 +1,6 @@
+{
+  "name": "suspend-student",
+  "flavours": ["event-sourced", "state-based"],
+  "prompt": "Registrars need to record that a student is suspended, from a start date to an end date. A suspension that ends before it starts is not allowed, and a student who has withdrawn cannot be suspended. Other parts of the school need to hear about suspensions.",
+  "expect": { "operations": ["suspend-student@1"], "events": ["StudentSuspended"], "newTests": true }
+}

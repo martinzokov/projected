@@ -553,7 +553,7 @@ export function newService(cwd: string, directory: string | undefined, options: 
     lines: [
       `new: created ${name} (${flavour}) in ${relative(cwd, target) || "."}, with the ${options.aggregate} aggregate`,
       `next: cd ${relative(cwd, target) || "."} && pnpm install && pnpm openapi && pnpm lock && pnpm docs && pnpm check`,
-      `      then grow it: projected new command <type> --aggregate ${options.aggregate} --event <Event>`,
+      `      then set it up for coding agents (projected agents install) and grow it: projected new command <type> --aggregate ${options.aggregate} --event <Event>`,
     ],
   };
 }

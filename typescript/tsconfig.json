@@ -90,6 +90,9 @@
     },
     {
       "path": "examples/school-state-based"
+    },
+    {
+      "path": "evals"
     }
   ]
 }

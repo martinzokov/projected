@@ -1,0 +1,6 @@
+{
+  "name": "withdrawn-on-date",
+  "flavours": ["state-based"],
+  "prompt": "Staff want to see which students left the school on a given date.",
+  "expect": { "newTests": true }
+}

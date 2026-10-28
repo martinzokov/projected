@@ -78,7 +78,7 @@ another service through a typed client, or through Kafka or NATS.
 | [`spec/`](spec) | the language-neutral protocol ([`protocol.md`](spec/protocol.md)) and wire schemas |
 | [`typescript/`](typescript) | the TypeScript implementation: packages and the school example in [each](typescript/examples/school-event-sourced) [flavour](typescript/examples/school-state-based) |
 | [`skills/`](skills) | AI agent skills for building with projected |
-| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [third-party APIs](docs/vendors.md), [running a service](docs/operations.md) (health, shutdown, metrics, operator tasks), [roadmap](docs/roadmap.md) |
+| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [third-party APIs](docs/vendors.md), [running a service](docs/operations.md) (health, shutdown, metrics, operator tasks), [coding agents](docs/agents.md) (guard, hooks, evals), [roadmap](docs/roadmap.md) |
 | [`vendor/anti-slop/`](vendor/anti-slop) | vendored copy of anti-slop's skills and configs ([`UPSTREAM.md`](vendor/anti-slop/UPSTREAM.md)) |
 | [`.claude/skills/`](.claude/skills) | links making all skills available to agents working in this repo |
 
@@ -134,7 +134,7 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling, event-handler lag gauges, graceful shutdown |
 | `@projected/testing` | tests | given/when/then, property-based tests from zod schemas (fast-check), fixed clock, sequential ids, test authenticator and telemetry, conformance suites for every store and transport |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |
-| `@projected/cli` | tooling | `projected new` (a service, aggregates, commands, queries, ports and event handlers, wired and tested), `check`, `arch`, `openapi`, `contracts`, `docs` (a service catalog with Mermaid diagrams, derived from the code), `vendor` (typed clients for third-party OpenAPI specs), `mutate` (mutation testing with Stryker), `operate` (operator tasks on a running service) |
+| `@projected/cli` | tooling | `projected new` (a service, aggregates, commands, queries, ports and event handlers, wired and tested), `check`, `arch`, `openapi`, `contracts`, `docs` (a service catalog with Mermaid diagrams, derived from the code), `vendor` (typed clients for third-party OpenAPI specs), `mutate` (mutation testing with Stryker), `operate` (operator tasks on a running service), `guard` and `agents install` (checks and hooks for coding agents) |
 
 ## Skills for agents
 

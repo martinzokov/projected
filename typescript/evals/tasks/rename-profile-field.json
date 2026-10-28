@@ -1,0 +1,6 @@
+{
+  "name": "rename-profile-field",
+  "flavours": ["event-sourced"],
+  "prompt": "The student profile should call the lastname `surname` from now on. Apps already in production read the profile today and must keep working.",
+  "expect": { "operations": ["student-profile@1", "student-profile@2"], "newTests": true }
+}
