@@ -22,7 +22,7 @@ class Conflict extends Error {
 
 /**
  * A {@link StateStore} on PostgreSQL: one `states` row per aggregate, and an `outbox` table
- * written in the same transaction. Run `migrate()` first.
+ * written in the same transaction. Its tables come from `postgresMigrator`.
  *
  * Concurrency: saves lock the aggregate's row (`SELECT ... FOR UPDATE`), so of two concurrent
  * saves at the same expected version exactly one wins. A removed aggregate keeps its row, with

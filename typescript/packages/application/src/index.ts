@@ -74,6 +74,7 @@ export type {
   NewEvent,
   Principal,
   ReadinessCheck,
+  SchemaMigrator,
   RecordedEvent,
 } from "./ports.js";
 export {

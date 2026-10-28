@@ -40,6 +40,11 @@ export interface ProjectConfig {
   readonly rules?: DesignRules;
   /** The generated service catalog. Defaults to `docs/catalog.md`. */
   readonly docs?: string;
+  /**
+   * Module exporting `migrations(env)`, the service's schema migrators, for `projected migrate`.
+   * Defaults to `src/infrastructure/config/migrations.ts`.
+   */
+  readonly migrations?: string;
   /** Mutation testing (`projected mutate`): the minimum score and what to mutate. */
   readonly mutation?: { readonly threshold?: number; readonly mutate?: readonly string[] };
 }

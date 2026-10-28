@@ -5,6 +5,41 @@ how an operator maintains it while it runs.
 Everything here is wired in the school examples' `main.ts` and in what `projected new service`
 generates.
 
+## Tables before the rollout
+
+A service lists the tables it keeps in one module, `src/infrastructure/config/migrations.ts`:
+projected's (`postgresMigrator`), better-auth's (`betterAuthMigrator`), and those of any adapter
+of its own (`schemaMigrator`). Each is a `SchemaMigrator` from `@projected/application`, which
+says what is pending and applies it. Two things use the list:
+
+- **The service, at start.** `prepareSchema(migrators, { apply })` from `@projected/runtime`
+  applies what is pending, so `pnpm start` against a new database just works. With
+  `MIGRATE_ON_START=false` it only checks, and refuses to start against tables that are behind,
+  naming what is pending and the command to run.
+- **`projected migrate`, as a deploy step.** It loads the same module and applies each migrator
+  in order, stopping at the first failure. `--check` changes nothing and exits 1 while changes
+  are pending.
+
+```sh
+DATABASE_URL=… projected migrate              # the release job, before any new instance starts
+MIGRATE_ON_START=false DATABASE_URL=… pnpm start  # every instance of the new version
+```
+
+In production, prefer the deploy step:
+
+- a migration that fails stops the rollout, rather than every new instance failing to start;
+- the service's database role needs no right to create or alter tables;
+- better-auth migrates without a lock, so instances starting together can race on its tables.
+  projected's own migrations take an advisory lock and are safe from any number of processes.
+
+While a rollout runs, the old version keeps serving against the new tables, so a migration must
+leave it working: add tables and nullable columns first, and drop what only the old version
+used in a later release (expand, then contract). Migrations only go forward. A published one
+is never edited; a fix is a new one.
+
+Stored data changes shape without any of this: events and states are upgraded when read (see
+the domain modelling skill), and a read model is rebuilt with `projected operate rebuild`.
+
 ## Health
 
 | Route | Answers | Use it for |
@@ -30,7 +65,7 @@ adapters that know their dependency:
 import { postgresReadiness } from "@projected/store-postgres/event-sourced";
 import { transportReadiness } from "@projected/messaging";
 
-const readiness = [postgresReadiness(sql), transportReadiness("kafka", kafka)];
+const readiness = [postgresReadiness(db), transportReadiness("kafka", kafka)];
 ```
 
 Each answers within a bounded time (2 s by default): a dependency that does not answer is down.

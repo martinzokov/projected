@@ -195,6 +195,7 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 | `projected guard` / `projected guard --full` | the rules on what you changed (after every edit) / the whole gate (before you call it done) |
 | `projected agents install` | AGENTS.md, skills and hooks for Claude Code, Cursor and Codex, and a pre-commit hook |
 | `projected operate [task] --url <service>` | run an operator task on a running service (`rebuild`, `backlog`, `replay-dead-letters`); needs a `projected:operate` token |
+| `projected migrate` / `projected migrate --check` | bring the service's tables up to date as a deploy step / list what is pending, changing nothing |
 | `tsc -b` | compile every layer; boundary violations are compile errors |
 
 Related skills: `projected-domain-modelling`, `projected-contracts`, `projected-integrations`,

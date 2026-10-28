@@ -235,6 +235,12 @@ create adapters, build repositories, call `createApplication`, start servers. No
 lints its size, so review it.
 
 Give `createApplication({ readiness })` a check for every dependency the service cannot serve
-without — `postgresReadiness(sql)`, `transportReadiness("kafka", transport)` — so
+without — `postgresReadiness(db)`, `transportReadiness("kafka", transport)` — so
 `GET /health/ready` tells the truth, and end `main.ts` with `monitorBacklog` (event handler lag)
 and `shutdownGracefully` (drain, then stop). See `docs/operations.md`.
+
+Tables are listed once, in `src/infrastructure/config/migrations.ts`: `postgresMigrator(db)` for
+projected's, `betterAuthMigrator(...)` for better-auth's. An adapter of yours that needs tables
+of its own adds a `schemaMigrator(db, { name, tracks })` there, with forward-only migrations on
+a track named after it; never write `CREATE TABLE` in an adapter. The service applies the list
+at start (`prepareSchema`), and `projected migrate` applies it before a rollout.

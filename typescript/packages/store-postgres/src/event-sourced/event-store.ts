@@ -19,7 +19,7 @@ class Conflict extends Error {
 }
 
 /**
- * An {@link EventStore} on PostgreSQL. Run `migrate()` first.
+ * An {@link EventStore} on PostgreSQL. Its tables come from `postgresMigrator`.
  *
  * Concurrency: appends lock the stream's row (`SELECT ... FOR UPDATE`), so of two concurrent
  * appends at the same expected version exactly one wins.

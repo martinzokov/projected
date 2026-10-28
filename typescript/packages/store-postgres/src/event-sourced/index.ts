@@ -1,5 +1,6 @@
 /** PostgreSQL stores for event-sourced projects: the event store, plus every shared store. */
-import { CORE_MIGRATIONS, runMigrations, type MigrationReport } from "../migrate.js";
+import type { SchemaMigrator } from "@projected/application";
+import { CORE_MIGRATIONS, tracksMigrator } from "../migrate.js";
 import type { PostgresClient, PostgresOptions } from "../sql.js";
 import { postgresCheckpointStore, postgresDocumentStore, postgresIdempotencyStore } from "../stores.js";
 import { postgresEventStore } from "./event-store.js";
@@ -9,11 +10,12 @@ export * from "../index.js";
 export { postgresEventStore } from "./event-store.js";
 
 /**
- * Create or upgrade every table a event-sourced project needs. Safe to run on every start, from
- * several processes at once.
+ * Every table an event-sourced project needs, as one {@link SchemaMigrator} named `projected`.
+ * List it in the service's migrations module, which `projected migrate` applies before a rollout
+ * and the service checks (or applies) at start. Safe from several processes at once.
  */
-export function migrate(db: PostgresClient, options: PostgresOptions = {}): Promise<MigrationReport> {
-  return runMigrations(db, { core: CORE_MIGRATIONS, "event-sourced": EVENT_SOURCED_MIGRATIONS }, options);
+export function postgresMigrator(db: PostgresClient, options: PostgresOptions = {}): SchemaMigrator {
+  return tracksMigrator(db, { ...options, name: "projected", tracks: { core: CORE_MIGRATIONS, "event-sourced": EVENT_SOURCED_MIGRATIONS } });
 }
 
 /** Every Postgres-backed port, sharing one client and schema. */

@@ -20,12 +20,17 @@ Use cases never see an adapter. They depend on the ports (or on their own ports,
 root picks the technology:
 
 ```ts
-import { fromPool, migrate, postgresStores } from "@projected/store-postgres/event-sourced"; // or /state-based
+import { fromPool, postgresMigrator, postgresStores } from "@projected/store-postgres/event-sourced"; // or /state-based
+import { prepareSchema } from "@projected/runtime";
 
 const db = fromPool(new pg.Pool({ connectionString: process.env.DATABASE_URL }));
-await migrate(db);                                     // idempotent; safe from several processes
+const schema = await prepareSchema([postgresMigrator(db)]); // or `projected migrate` before the rollout
+if (schema.isErr()) throw schema.error;
 const { eventStore, checkpoints, idempotency, documents } = postgresStores(db); // stateStore when state-based
 ```
+
+When the tables are created and upgraded — at start, or as a deploy step with `projected
+migrate` — is in [operations](operations.md#tables-before-the-rollout).
 
 The stores do not have to share a technology: events in KurrentDB, idempotency in Redis and read
 models in Mongo is a valid composition. A state store's states and outbox must share one,
@@ -116,10 +121,12 @@ mismatch is a `DependencyFailure`, not a crash.
 - **Schema** defaults to `projected` (configurable). Migrations come in tracks — `core`
   (checkpoints, idempotency, documents), `event-sourced` (streams, events) and `state-based`
   (states, outbox) — recorded per track in `<schema>.migrations` and applied under an advisory
-  lock. A flavour's `migrate` applies `core` plus its own track, so the two flavours never
-  collide on a version number, even in one schema.
+  lock. A flavour's `postgresMigrator` covers `core` plus its own track, so the two flavours
+  never collide on a version number, even in one schema. A service's own tables get a track of
+  their own through `schemaMigrator(db, { name, tracks })`; checking what is pending reads the
+  `migrations` table and changes nothing.
 - **Errors**: any driver failure becomes `DependencyUnavailable` naming the cause; a missing
-  table adds "run migrate()" to the message.
+  table adds "run `projected migrate`" to the message.
 - **Queries are typed, not strings.** The adapter is built on [Kysely](https://kysely.dev): the
   tables are declared once (`ProjectedDatabase`), and every query names tables and columns the
   compiler checks against them, with every value a bound parameter. Kysely's `sql` template — still

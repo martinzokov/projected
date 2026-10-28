@@ -4,6 +4,7 @@ import { docs } from "./docs/commands.js";
 import { installAgents } from "./agents.js";
 import { conformance } from "./conformance.js";
 import { HARNESSES, guard, type Harness } from "./guard.js";
+import { loadMigrations, migrate } from "./migrate.js";
 import { mutate } from "./mutate.js";
 import { operate } from "./operate.js";
 import { loadProject } from "./project.js";
@@ -42,6 +43,9 @@ Commands:
                         run an operator task on a running service (rebuild, backlog,
                         replay-dead-letters, ...); without a task, list them. The token
                         (default PROJECTED_OPERATOR_TOKEN) needs projected:operate.
+  migrate [--check]     bring the service's tables up to date (projected's, better-auth's,
+                        its own) as a deploy step, before the new version starts; --check
+                        changes nothing and fails while changes are pending
   check [--strict]      everything below, as CI runs it (no files are written);
                         --strict also fails on design-rule warnings
   arch [--strict]       layout, layer tsconfigs, import boundaries, code and design rules
@@ -66,8 +70,9 @@ Commands:
 
 Configuration: projected.json in the project root. "flavour" ("event-sourced" or
 "state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages,
-securitySchemes, vendors, rules (design rule levels), docs (catalog path) and mutation
-(threshold, files) are optional.`;
+securitySchemes, vendors, rules (design rule levels), docs (catalog path), migrations
+(the module listing the service's schema migrators) and mutation (threshold, files) are
+optional.`;
 
 /** The whole of standard input, for hook events; empty when it is a terminal. */
 async function readStdin(): Promise<string> {
@@ -210,6 +215,16 @@ export async function run(argv: readonly string[], print: (line: string) => void
       break;
     case "mutate":
       steps.push(() => mutate(project));
+      break;
+    case "migrate":
+      steps.push(async () => {
+        const migrations = await loadMigrations(project);
+        try {
+          return await migrate(migrations, { check: values.check });
+        } finally {
+          await migrations.close?.();
+        }
+      });
       break;
     case "arch":
       steps.push(() => architecture(project, { strict: values.strict }));

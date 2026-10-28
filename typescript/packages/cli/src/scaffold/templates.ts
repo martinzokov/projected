@@ -61,6 +61,7 @@ export function serviceFiles(service: ServiceTemplate): Record<string, string> {
         // Not "docs": `pnpm docs` is pnpm's own command, and would never reach the script.
         catalog: "projected docs",
         mutate: "projected mutate",
+        migrate: "projected migrate",
       },
       dependencies: dependencies(FRAMEWORK, ["@opentelemetry/api", "better-auth", "pg"]),
       devDependencies: dependencies(FRAMEWORK_DEV, ["@stryker-mutator/core", "@types/node", "@types/pg", "typescript", "vitest"]),
@@ -122,6 +123,10 @@ pnpm install
 pnpm check      # compile, test, and \`projected check\` (boundaries, rules, contract lock, generated files)
 pnpm build && pnpm start   # in memory; DATABASE_URL=postgres://… for PostgreSQL
 \`\`\`
+
+Against PostgreSQL the service creates its tables at start. In production, make that a deploy
+step: run \`pnpm migrate\` (\`projected migrate\`) before each rollout, and start the service with
+\`MIGRATE_ON_START=false\` so it only checks its tables are current and needs no right to change them.
 
 Grow it with the generators, then fill in the business rules they leave as stubs:
 
@@ -201,54 +206,94 @@ export function compose${Name}(infrastructure: ${Name}Infrastructure) {
   });
 }
 `,
-    "src/infrastructure/config/environment.ts": `import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryIdempotencyStore, ${s.memory} } from "@projected/store-memory/${flavour}";
-import { fromPool, migrate, postgresReadiness, postgresStores } from "@projected/store-postgres/${flavour}";
-import { betterAuth } from "better-auth";
-import { memoryAdapter } from "better-auth/adapters/memory";
-import { getMigrations } from "better-auth/db/migration";
+    "src/infrastructure/config/auth.ts": `import { memoryAdapter } from "better-auth/adapters/memory";
 import { admin, bearer } from "better-auth/plugins";
-import pg from "pg";
-import type { Clock } from "@projected/application/${flavour}";
+import type pg from "pg";
 
 /**
- * Picks real infrastructure from the environment, and in-memory stand-ins otherwise, so the
- * service runs with \`pnpm start\` alone and against PostgreSQL when configured:
- *
- *   DATABASE_URL   PostgreSQL for ${flavour === "event-sourced" ? "events" : "state and its outbox"}, checkpoints, idempotency, read models and better-auth
- *   AUTH_SECRET    better-auth's secret (required outside development)
+ * better-auth's options, in one place: the service creates better-auth with them, and its
+ * migrator plans with them, since the plugins decide the columns. Without a pool, accounts live
+ * in memory.
  */
-export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process.env) {
-  const pool = env.DATABASE_URL === undefined ? undefined : new pg.Pool({ connectionString: env.DATABASE_URL });
-  const stores = await (async () => {
-    if (pool === undefined) {
-      return {
-        ${s.name}: ${s.memory}({ clock }),
-        checkpoints: inMemoryCheckpointStore(),
-        idempotency: inMemoryIdempotencyStore({ clock }),
-        documents: inMemoryDocumentStore(),
-      };
-    }
-    const sql = fromPool(pool);
-    await migrate(sql);
-    return postgresStores(sql);
-  })();
-
-  const authOptions = {
+export function authOptions(env: NodeJS.ProcessEnv, pool?: pg.Pool) {
+  return {
     baseURL: env.PUBLIC_URL ?? \`http://localhost:\${env.PORT ?? 3000}\`,
     secret: env.AUTH_SECRET ?? "development-only-secret-change-me-0000000000",
     database: pool ?? memoryAdapter({ user: [], session: [], account: [], verification: [] }),
     emailAndPassword: { enabled: true },
     plugins: [bearer(), admin()],
   };
-  // better-auth checks its tables when it is created, so they must exist first.
-  if (pool !== undefined) await (await getMigrations(authOptions)).runMigrations();
-  const auth = betterAuth(authOptions);
+}
+`,
+    "src/infrastructure/config/migrations.ts": `import { betterAuthMigrator } from "@projected/auth-better-auth";
+import { fromPool, postgresMigrator } from "@projected/store-postgres/${flavour}";
+import { getMigrations } from "better-auth/db/migration";
+import pg from "pg";
+import type { SchemaMigrator } from "@projected/application/${flavour}";
+import { authOptions } from "./auth.js";
+
+/**
+ * Every set of tables the service keeps in PostgreSQL, in the order they are created: projected's,
+ * then better-auth's. The service applies or checks them at start (see environment.ts), and
+ * \`projected migrate\` applies them as a deploy step. An adapter with tables of its own adds a
+ * \`schemaMigrator(...)\` here.
+ */
+export function migrators(pool: pg.Pool, env: NodeJS.ProcessEnv): SchemaMigrator[] {
+  return [postgresMigrator(fromPool(pool)), betterAuthMigrator(() => getMigrations(authOptions(env, pool)))];
+}
+
+/** What \`projected migrate\` runs: the migrators over DATABASE_URL, and none without it. */
+export function migrations(env: NodeJS.ProcessEnv = process.env) {
+  const pool = env.DATABASE_URL === undefined ? undefined : new pg.Pool({ connectionString: env.DATABASE_URL });
+  return {
+    migrators: pool === undefined ? [] : migrators(pool, env),
+    close: async () => {
+      await pool?.end();
+    },
+  };
+}
+`,
+    "src/infrastructure/config/environment.ts": `import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryIdempotencyStore, ${s.memory} } from "@projected/store-memory/${flavour}";
+import { fromPool, postgresReadiness, postgresStores } from "@projected/store-postgres/${flavour}";
+import { prepareSchema } from "@projected/runtime";
+import { betterAuth } from "better-auth";
+import pg from "pg";
+import type { Clock } from "@projected/application/${flavour}";
+import { authOptions } from "./auth.js";
+import { migrators } from "./migrations.js";
+
+/**
+ * Picks real infrastructure from the environment, and in-memory stand-ins otherwise, so the
+ * service runs with \`pnpm start\` alone and against PostgreSQL when configured:
+ *
+ *   DATABASE_URL      PostgreSQL for ${flavour === "event-sourced" ? "events" : "state and its outbox"}, checkpoints, idempotency, read models and better-auth
+ *   AUTH_SECRET       better-auth's secret (required outside development)
+ *   MIGRATE_ON_START  "false" where \`projected migrate\` runs before each rollout: the service
+ *                     then only checks that its tables are current, and refuses to start if not
+ */
+export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process.env) {
+  const pool = env.DATABASE_URL === undefined ? undefined : new pg.Pool({ connectionString: env.DATABASE_URL });
+  const db = pool === undefined ? undefined : fromPool(pool);
+  if (pool !== undefined) {
+    // Before anything uses them: better-auth checks its tables when it is created.
+    const schema = await prepareSchema(migrators(pool, env), { apply: env.MIGRATE_ON_START !== "false" });
+    if (schema.isErr()) throw schema.error;
+  }
+  const stores =
+    db === undefined
+      ? {
+          ${s.name}: ${s.memory}({ clock }),
+          checkpoints: inMemoryCheckpointStore(),
+          idempotency: inMemoryIdempotencyStore({ clock }),
+          documents: inMemoryDocumentStore(),
+        }
+      : postgresStores(db);
 
   return {
     ...stores,
-    auth,
+    auth: betterAuth(authOptions(env, pool)),
     // Not ready while the database is unreachable.
-    readiness: pool === undefined ? [] : [postgresReadiness(fromPool(pool))],
+    readiness: db === undefined ? [] : [postgresReadiness(db)],
     close: async () => {
       await pool?.end();
     },

@@ -109,6 +109,21 @@ export interface ReadinessCheck {
   check(): Promise<Result<void, DependencyUnavailable | DependencyFailure>>;
 }
 
+/**
+ * Brings one set of tables up to date: projected's, better-auth's, an adapter's own. The service
+ * lists its migrators in one place; `projected migrate` applies them as a deploy step, before the
+ * new version starts, and the service checks (or applies) them at start. Changes are named as
+ * they are reported: `core@2`, `create user`.
+ */
+export interface SchemaMigrator {
+  /** Names the tables in reports: `projected`, `better-auth`. */
+  readonly name: string;
+  /** What `apply` would change, changing nothing. Empty when the tables are current. */
+  pending(): Promise<Result<readonly string[], DependencyUnavailable | DependencyFailure>>;
+  /** Make the pending changes, and say which. Applying current tables changes nothing. */
+  apply(): Promise<Result<readonly string[], DependencyUnavailable | DependencyFailure>>;
+}
+
 /** Remembers how far each event handler has read the global log. */
 export interface CheckpointStore {
   /** The last processed global position, 0 when the handler has never run. */

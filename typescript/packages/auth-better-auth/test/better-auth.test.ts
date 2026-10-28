@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import { Result, createApplication, defineCommand, defineContracts, defineQuery, z } from "@projected/application";
 import {
   betterAuthAuthenticator,
+  betterAuthMigrator,
   betterAuthRoutes,
   betterAuthSecuritySchemes,
   type BetterAuthInstance,
+  type BetterAuthMigrationPlan,
 } from "@projected/auth-better-auth";
 import { httpHandler, openApiDocument } from "@projected/http";
 import { sequentialIds } from "@projected/testing";
@@ -123,5 +125,55 @@ describe("better-auth", () => {
     const whoami = (document.paths["/queries/whoami/version/1"] as { post: { security: unknown } }).post;
 
     expect(whoami.security).toEqual([{ betterAuthSession: [] }, { bearer: [] }]);
+  });
+});
+
+/** A plan like getMigrations' for a database with a user table that lacks the admin plugin's columns. */
+function plan(ran: string[]): BetterAuthMigrationPlan {
+  return {
+    toBeCreated: [{ table: "session" }],
+    toBeAdded: [{ table: "user", fields: { role: {}, banned: {} } }],
+    toBeAddedIndexes: [{ name: "session_userId_idx" }],
+    runMigrations: async () => {
+      ran.push("migrated");
+    },
+  };
+}
+
+describe("the better-auth migrator", () => {
+  it("lists the tables, columns and indexes better-auth would create, running nothing", async () => {
+    const ran: string[] = [];
+
+    const pending = await betterAuthMigrator(async () => plan(ran)).pending();
+
+    expect(pending.unwrap()).toEqual(["create session", "add user.role", "add user.banned", "index session_userId_idx"]);
+    expect(ran).toEqual([]);
+  });
+
+  it("runs better-auth's migrations when something is pending, and reports what they changed", async () => {
+    const ran: string[] = [];
+
+    const applied = await betterAuthMigrator(async () => plan(ran)).apply();
+
+    expect(applied.unwrap()).toHaveLength(4);
+    expect(ran).toEqual(["migrated"]);
+  });
+
+  it("leaves current tables alone", async () => {
+    const ran: string[] = [];
+    const current = { ...plan(ran), toBeCreated: [], toBeAdded: [], toBeAddedIndexes: [] };
+
+    const applied = await betterAuthMigrator(async () => current).apply();
+
+    expect(applied.unwrap()).toEqual([]);
+    expect(ran).toEqual([]);
+  });
+
+  it("returns a failure to plan as a dependency error, never throwing", async () => {
+    const refused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), { code: "ECONNREFUSED" });
+
+    const pending = await betterAuthMigrator(() => Promise.reject(refused)).pending();
+
+    expect(pending.isErr() && pending.error).toMatchObject({ _tag: "DependencyUnavailable", dependency: "better-auth tables" });
   });
 });

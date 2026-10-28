@@ -13,7 +13,7 @@
  * Infrastructure-only: wire it in `src/infrastructure/config`. Use cases see only the resulting
  * `Principal`, so swapping better-auth for another provider never touches them.
  */
-import { DependencyUnavailable, Result, type Authenticator, type Principal } from "@projected/application";
+import { DependencyUnavailable, Result, fromDependency, type Authenticator, type Principal, type SchemaMigrator } from "@projected/application";
 
 /** The parts of a better-auth session the adapter reads. */
 export interface BetterAuthSession {
@@ -113,5 +113,46 @@ export function betterAuthSecuritySchemes(options: { readonly cookieName?: strin
       description: "Session cookie set by better-auth's sign-in endpoints.",
     },
     bearer: { type: "http", scheme: "bearer", description: "Session token from better-auth's bearer plugin." },
+  };
+}
+
+/** What better-auth's `getMigrations(options)` plans, as far as the migrator reads it. */
+export interface BetterAuthMigrationPlan {
+  readonly toBeCreated: ReadonlyArray<{ readonly table: string }>;
+  readonly toBeAdded: ReadonlyArray<{ readonly table: string; readonly fields: Readonly<Record<string, unknown>> }>;
+  readonly toBeAddedIndexes?: ReadonlyArray<{ readonly name: string }>;
+  runMigrations(): Promise<void>;
+}
+
+const changesIn = (plan: BetterAuthMigrationPlan): string[] => [
+  ...plan.toBeCreated.map(({ table }) => `create ${table}`),
+  ...plan.toBeAdded.flatMap(({ table, fields }) => Object.keys(fields).map((field) => `add ${table}.${field}`)),
+  ...(plan.toBeAddedIndexes ?? []).map(({ name }) => `index ${name}`),
+];
+
+/**
+ * better-auth's tables as a {@link SchemaMigrator}, so `projected migrate` creates them with
+ * projected's, before a rollout. Plan with the options the service creates better-auth with:
+ * its plugins decide the columns.
+ *
+ * ```ts
+ * betterAuthMigrator(() => getMigrations(authOptions)) // getMigrations from "better-auth/db/migration"
+ * ```
+ *
+ * better-auth takes no lock while it migrates, so apply it from one process: the deploy step,
+ * or a single instance.
+ */
+export function betterAuthMigrator(plan: () => Promise<BetterAuthMigrationPlan>): SchemaMigrator {
+  const dependency = "better-auth tables";
+  return {
+    name: "better-auth",
+    pending: () => fromDependency(dependency, async () => changesIn(await plan())),
+    apply: () =>
+      fromDependency(dependency, async () => {
+        const planned = await plan();
+        const changes = changesIn(planned);
+        if (changes.length > 0) await planned.runMigrations();
+        return changes;
+      }),
   };
 }

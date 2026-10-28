@@ -18,6 +18,7 @@ export { canonicalSpec, parseSpec, specHash, type OpenApiDocument } from "./vend
 export { docs } from "./docs/commands.js";
 export { analyze, type CodeModel } from "./docs/analyze.js";
 export { renderCatalog } from "./docs/render.js";
+export { loadMigrations, migrate, type Migrations } from "./migrate.js";
 export { mutate, type MutationConfig } from "./mutate.js";
 export { newAggregate, newCommand, newEventHandler, newPort, newQuery, newService } from "./scaffold/generate.js";
 export { DEPENDENCY_VERSIONS } from "./scaffold/templates.js";

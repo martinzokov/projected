@@ -51,7 +51,7 @@ export async function attempt<T>(dependency: string, work: () => Promise<T>): Pr
     return Result.ok(await work());
   } catch (cause) {
     const code = (cause as { code?: string }).code;
-    const hint = code === "42P01" ? " (tables missing — run migrate())" : "";
+    const hint = code === "42P01" ? " (tables missing — run `projected migrate`)" : "";
     return Result.err(
       new DependencyUnavailable({ dependency, message: `${dependency}: ${(cause as Error).message ?? String(cause)}${hint}`, cause }),
     );
