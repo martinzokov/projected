@@ -225,5 +225,7 @@ run it before finishing domain work and in CI. Tests about code shape skip thems
 ## Architecture is tested too
 
 Keep a test that runs `checkArchitecture(root)` from `@projected/architecture` and expects no
-violations, so `pnpm test` alone catches a boundary breach. Skip it under mutation testing:
-`describe.skipIf(process.env["PROJECTED_MUTATION"] !== undefined)`.
+violations, so `pnpm test` alone catches a boundary breach. Skip it under mutation testing —
+`describe.skipIf(process.env["PROJECTED_MUTATION"] !== undefined)` — and import the checker inside
+the test (`await import("@projected/architecture")`): a skipped file still loads what it imports,
+once per mutant.
