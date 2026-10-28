@@ -1,0 +1,644 @@
+{
+  "$schema": "./scenario.schema.json",
+  "suite": "school",
+  "description": "The reference service, in any language and either flavour: the school from \"It's time to put REST to rest\". Every implementation of it answers these exactly.",
+  "principals": {
+    "registrar": {
+      "permissions": [
+        "students:manage"
+      ]
+    },
+    "teacher": {
+      "permissions": []
+    },
+    "operator": {
+      "permissions": [
+        "projected:operate"
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "enlists a student under the id the caller chose, and finds them",
+      "spec": "§1, §2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "body": {
+              "studentId": "s-${id}",
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "studentId": "s-${id}"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/enlisted-students-on-joining-date/version/1",
+            "as": "teacher",
+            "body": {
+              "date": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "students": [
+                  {
+                    "studentId": "s-${id}",
+                    "firstname": "Bruce",
+                    "lastname": "Wayne"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/student-profile/version/1",
+            "as": "teacher",
+            "body": {
+              "studentId": "s-${id}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "student": {
+                  "studentId": "s-${id}",
+                  "firstname": "Bruce",
+                  "lastname": "Wayne",
+                  "joiningDate": "${date}",
+                  "status": "enlisted"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "answers a broken business rule with 200 and a typed error",
+      "spec": "§2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "body": {
+              "studentId": "s-${id}",
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "studentId": "s-${id}"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "body": {
+              "studentId": "s-${id}",
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "error",
+              "error": {
+                "type": "StudentAlreadyEnlisted",
+                "message": "Student s-${id} is already enlisted",
+                "data": {
+                  "studentId": "s-${id}"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "still serves the deprecated version, which assigns the id",
+      "spec": "§1.1",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/1",
+            "as": "registrar",
+            "body": {
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "studentId": "$capture:student"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/student-profile/version/1",
+            "as": "teacher",
+            "body": {
+              "studentId": "${student}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "student": {
+                  "studentId": "${student}",
+                  "lastname": "Wayne"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "answers a question about a missing student with null, not a problem",
+      "spec": "§2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/student-profile/version/1",
+            "as": "teacher",
+            "body": {
+              "studentId": "nobody-${id}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "student": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "refuses input its contract does not accept, saying where",
+      "spec": "§3.2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "body": {
+              "studentId": "s-${id}",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:invalid-input",
+              "issues": "$any"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "keeps enrolment to those who manage students",
+      "spec": "§1.3",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "teacher",
+            "body": {
+              "studentId": "s-${id}",
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:forbidden"
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "body": {
+              "studentId": "s-${id}",
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:unauthenticated"
+            },
+            "headers": {
+              "www-authenticate": "$present"
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/student-profile/version/1",
+            "body": {
+              "studentId": "s-${id}"
+            }
+          },
+          "expect": {
+            "status": 401,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:unauthenticated"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "runs a command once per idempotency key, replaying its outcome",
+      "spec": "§2.2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/1",
+            "as": "registrar",
+            "headers": {
+              "idempotency-key": "k-${id}"
+            },
+            "body": {
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "studentId": "$capture:student"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/1",
+            "as": "registrar",
+            "headers": {
+              "idempotency-key": "k-${id}"
+            },
+            "body": {
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "studentId": "${student}"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/1",
+            "as": "registrar",
+            "headers": {
+              "idempotency-key": "k-${id}"
+            },
+            "body": {
+              "firstname": "Bruce",
+              "lastname": "Kent",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 422,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:idempotency-key-reused"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "runs a batch item by item, in order",
+      "spec": "§3.3",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands",
+            "as": "registrar",
+            "body": {
+              "commands": [
+                {
+                  "type": "enlist-student",
+                  "version": 2,
+                  "data": {
+                    "studentId": "b-${id}",
+                    "firstname": "Bruce",
+                    "lastname": "Wayne",
+                    "joiningDate": "${date}"
+                  }
+                },
+                {
+                  "type": "report-student-lastname-change",
+                  "version": 1,
+                  "data": {
+                    "studentId": "b-${id}",
+                    "newLastname": "Kent"
+                  }
+                },
+                {
+                  "type": "enlist-student",
+                  "version": 9,
+                  "data": {}
+                }
+              ]
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "BatchResult",
+            "body": {
+              "results": [
+                {
+                  "status": "ok",
+                  "value": {
+                    "studentId": "b-${id}"
+                  }
+                },
+                {
+                  "status": "ok",
+                  "value": {
+                    "changed": true
+                  }
+                },
+                {
+                  "status": "failed",
+                  "problem": {
+                    "type": "urn:projected:problem:unknown-operation"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "refuses a body that is not JSON",
+      "spec": "§3.2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "headers": {
+              "content-type": "application/json"
+            },
+            "raw": "{not json"
+          },
+          "expect": {
+            "status": 400,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:malformed-request"
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "headers": {
+              "content-type": "text/plain"
+            },
+            "raw": "Bruce Wayne"
+          },
+          "expect": {
+            "status": 415,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:unsupported-media-type"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraws a student, keeping the record but not the listing",
+      "spec": "§1, §2",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/enlist-student/version/2",
+            "as": "registrar",
+            "body": {
+              "studentId": "w-${id}",
+              "firstname": "Bruce",
+              "lastname": "Wayne",
+              "joiningDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "studentId": "w-${id}"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/commands/withdraw-student/version/1",
+            "as": "registrar",
+            "body": {
+              "studentId": "w-${id}",
+              "leavingDate": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "withdrawn": true
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/enlisted-students-on-joining-date/version/1",
+            "as": "teacher",
+            "body": {
+              "date": "${date}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "students": []
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/queries/student-profile/version/1",
+            "as": "teacher",
+            "body": {
+              "studentId": "w-${id}"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "student": {
+                  "studentId": "w-${id}",
+                  "status": "withdrawn"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "lets operators run operator tasks, and nobody else",
+      "spec": "§3.6",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/operate/backlog",
+            "as": "operator",
+            "body": {}
+          },
+          "expect": {
+            "status": 200,
+            "schema": "OperationResult",
+            "body": {
+              "status": "ok",
+              "value": {
+                "handlers": "$any"
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/operate/backlog",
+            "as": "registrar",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "schema": "ProblemDetails",
+            "body": {
+              "type": "urn:projected:problem:forbidden"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

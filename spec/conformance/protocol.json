@@ -1,0 +1,100 @@
+{
+  "$schema": "./scenario.schema.json",
+  "suite": "protocol",
+  "description": "What every projected service answers, whatever its operations: health, the OpenAPI document, routing, problems and message ids.",
+  "principals": {},
+  "scenarios": [
+    {
+      "name": "answers liveness",
+      "spec": "§3.5",
+      "steps": [
+        { "request": { "method": "GET", "path": "/health/live" }, "expect": { "status": 200, "body": { "status": "ok" } } },
+        { "request": { "method": "GET", "path": "/health" }, "expect": { "status": 200, "body": { "status": "ok" } } }
+      ]
+    },
+    {
+      "name": "answers readiness with a health report",
+      "spec": "§3.5",
+      "steps": [{ "request": { "method": "GET", "path": "/health/ready" }, "expect": { "status": [200, 503], "schema": "HealthReport" } }]
+    },
+    {
+      "name": "serves its OpenAPI 3.1 document",
+      "spec": "§3.1",
+      "steps": [{ "request": { "method": "GET", "path": "/openapi.json" }, "expect": { "status": 200, "body": { "openapi": "3.1.0", "paths": "$any" } } }]
+    },
+    {
+      "name": "refuses an operation it does not have with a 404 problem",
+      "spec": "§3.2",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/commands/no-such-operation/version/1", "body": {} },
+          "expect": {
+            "status": 404,
+            "headers": { "content-type": "application/problem+json" },
+            "schema": "ProblemDetails",
+            "body": { "type": "urn:projected:problem:unknown-operation", "status": 404 }
+          }
+        },
+        {
+          "request": { "method": "POST", "path": "/queries/no-such-operation/version/7", "body": {} },
+          "expect": { "status": 404, "schema": "ProblemDetails", "body": { "type": "urn:projected:problem:unknown-operation" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses a path it does not serve with a 404 problem",
+      "spec": "§3.2",
+      "steps": [
+        { "request": { "method": "GET", "path": "/no-such-path" }, "expect": { "status": 404, "schema": "ProblemDetails", "body": { "type": "urn:projected:problem:not-found" } } }
+      ]
+    },
+    {
+      "name": "runs operations only on POST, saying so",
+      "spec": "§3.2",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/commands/no-such-operation/version/1" },
+          "expect": { "status": 405, "headers": { "allow": "POST" }, "schema": "ProblemDetails", "body": { "type": "urn:projected:problem:method-not-allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses a batch that is not a list of items",
+      "spec": "§3.3",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/commands", "body": { "items": [] } },
+          "expect": { "status": 400, "schema": "ProblemDetails", "body": { "type": "urn:projected:problem:malformed-request" } }
+        }
+      ]
+    },
+    {
+      "name": "echoes the message id it is sent, and correlates with it by default",
+      "spec": "§3.4",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/commands/no-such-operation/version/1", "headers": { "x-message-id": "m-${id}" }, "body": {} },
+          "expect": { "status": 404, "headers": { "x-message-id": "m-${id}", "x-correlation-id": "m-${id}" } }
+        },
+        {
+          "request": { "method": "POST", "path": "/commands/no-such-operation/version/1", "headers": { "x-message-id": "m2-${id}", "x-correlation-id": "flow-${id}" }, "body": {} },
+          "expect": { "status": 404, "headers": { "x-message-id": "m2-${id}", "x-correlation-id": "flow-${id}" } }
+        },
+        {
+          "request": { "method": "POST", "path": "/commands/no-such-operation/version/1", "body": {} },
+          "expect": { "status": 404, "headers": { "x-message-id": "$present" } }
+        }
+      ]
+    },
+    {
+      "name": "keeps operator tasks from anonymous callers",
+      "spec": "§3.6",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/operate/list-tasks", "body": {} },
+          "expect": { "status": 401, "headers": { "www-authenticate": "$present" }, "schema": "ProblemDetails", "body": { "type": "urn:projected:problem:unauthenticated" } }
+        }
+      ]
+    }
+  ]
+}

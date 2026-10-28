@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:projected:spec:conformance:1",
+  "title": "projected conformance suite",
+  "description": "Black-box scenarios: HTTP requests to a running service and what it must answer. See README.md for the matching rules.",
+  "type": "object",
+  "required": ["suite", "description", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "suite": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "description": { "type": "string" },
+    "principals": {
+      "description": "Callers the service must recognise, by name: a test authenticator accepts `Authorization: Bearer <name>-token` for each, with these permissions.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["permissions"],
+        "additionalProperties": false,
+        "properties": { "permissions": { "type": "array", "items": { "type": "string" } } }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "steps"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "spec": { "description": "The section of protocol.md it holds a service to.", "type": "string" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["request", "expect"],
+              "additionalProperties": false,
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "required": ["method", "path"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "method": { "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
+                    "path": { "type": "string", "pattern": "^/" },
+                    "as": { "description": "A principal's name: sends its bearer token.", "type": "string" },
+                    "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "body": { "description": "Sent as JSON, with content-type application/json." },
+                    "raw": { "description": "Sent as is, for malformed requests; set content-type in headers.", "type": "string" }
+                  }
+                },
+                "expect": {
+                  "type": "object",
+                  "required": ["status"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": { "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" } }] },
+                    "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "schema": { "description": "A definition in wire.schema.json the body must conform to.", "type": "string" },
+                    "body": { "description": "What the body must match: see README.md." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

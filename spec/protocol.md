@@ -5,6 +5,9 @@
 This document is normative. The key words MUST, MUST NOT, SHOULD and MAY are used as in
 RFC 2119. The machine-readable shapes are in [`wire.schema.json`](wire.schema.json) (JSON
 Schema 2020-12). The TypeScript implementation lives in [`../typescript`](../typescript).
+[`conformance/`](conformance) holds black-box scenarios — HTTP requests and the answers this
+document requires — that any implementation, in any language, can be run against
+(`projected conformance --url <service>`).
 
 The protocol follows the approach in Sollecito's
 [*It's time to put REST to rest*](https://sollecitom.github.io/software-product-development-blog/posts/2023/2023-09-22-put-rest-to-rest/):

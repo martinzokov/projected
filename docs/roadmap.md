@@ -44,5 +44,7 @@ Ports in order of fit: **Kotlin** (sealed results, Gradle modules per layer), **
 layer), **Go**, **Python**, **C#**. Each needs the kernel, contracts with typed handler binding,
 the dispatcher with access and idempotency, the HTTP and messaging bindings of
 `spec/protocol.md`, stores and transports passing ports of the conformance suites, enforcement at
-the strongest tier the language allows, and the school example. A language-neutral HTTP
-conformance suite run against each example would make "passes the spec" mechanical.
+the strongest tier the language allows, and the school example — which passes when
+`projected conformance --url … --suite protocol --suite school` does: the scenarios in
+[`spec/conformance`](../spec/conformance) are HTTP in, HTTP out, so the TypeScript runner judges
+a Kotlin school as it judges the TypeScript ones.

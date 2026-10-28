@@ -157,3 +157,8 @@ unreachable `evolve` guards.
 `spec/wire.schema.json` is checked against real HTTP responses and real messages
 (`packages/http/test/wire-spec.test.ts`, `packages/messaging/test/wire-spec.test.ts`), and the
 generated OpenAPI documents are validated against the official OpenAPI 3.1 schema.
+
+The language-neutral black-box suites in [`spec/conformance`](../spec/conformance) — `protocol`
+for any service, `school` for the reference service — run against both school examples over a
+real socket (`examples/*/test/conformance.test.ts`), with `projected conformance`, which a
+service in any language can be judged by too.

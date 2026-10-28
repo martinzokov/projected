@@ -24,3 +24,4 @@ export { DEPENDENCY_VERSIONS } from "./scaffold/templates.js";
 export { operate, type OperateOptions } from "./operate.js";
 export { installAgents, type AgentsOptions } from "./agents.js";
 export { HARNESSES, answerHook, guard, type GuardOptions, type GuardOutcome, type Harness } from "./guard.js";
+export { conformance, type ConformanceOptions } from "./conformance.js";

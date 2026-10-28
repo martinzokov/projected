@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
 import { docs } from "./docs/commands.js";
 import { installAgents } from "./agents.js";
+import { conformance } from "./conformance.js";
 import { HARNESSES, guard, type Harness } from "./guard.js";
 import { mutate } from "./mutate.js";
 import { operate } from "./operate.js";
@@ -34,6 +35,9 @@ Commands:
   agents install [--harness claude-code,cursor,codex] [--no-git-hook]
                         set the project up for coding agents: AGENTS.md, the skills, each
                         harness's rules and hooks, and a git pre-commit hook
+  conformance --url <service> [--suite protocol|school|<file>]... [--token <name>=<token>]...
+                        run the language-neutral black-box scenarios (spec/conformance)
+                        against a running service, in any language
   operate [<task>] --url <service> [--input <json>] [--token <token>]
                         run an operator task on a running service (rebuild, backlog,
                         replay-dead-letters, ...); without a task, list them. The token
@@ -107,7 +111,8 @@ export async function run(argv: readonly string[], print: (line: string) => void
         harness: { type: "string" },
         "no-git-hook": { type: "boolean", default: false },
         input: { type: "string" },
-        token: { type: "string" },
+        token: { type: "string", multiple: true },
+        suite: { type: "string", multiple: true },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -128,7 +133,15 @@ export async function run(argv: readonly string[], print: (line: string) => void
     return result.ok ? 0 : 1;
   };
   if (command === "operate") {
-    return finish(await operate(subcommand, { url: values.url, input: values.input, token: values.token }));
+    return finish(await operate(subcommand, { url: values.url, input: values.input, token: values.token?.at(-1) }));
+  }
+  if (command === "conformance") {
+    if (values.url === undefined) {
+      print("conformance: name the running service with --url <base url>");
+      return 2;
+    }
+    const tokens = Object.fromEntries((values.token ?? []).map((entry) => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]));
+    return finish(await conformance({ url: values.url, ...(values.suite === undefined ? {} : { suites: values.suite }), tokens }));
   }
   if (command === "new" && subcommand === "service") {
     return finish(newService(values.root, target, { flavour: values.flavour, aggregate: values.aggregate }));

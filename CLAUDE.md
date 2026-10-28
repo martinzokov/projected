@@ -58,7 +58,8 @@ generator or a rule's message.
   that seeds a violation and asserts the rule name. A rule never seen failing is not trusted.
 - **The protocol and the code move together.** Change `spec/protocol.md` and
   `spec/wire.schema.json` with the HTTP/messaging adapters; the wire-spec tests check real output
-  against the schema.
+  against the schema. A new observable promise gets a scenario in `spec/conformance/` — HTTP only,
+  nothing a language has to special-case — which both school examples must pass.
 - **Every store and transport passes its conformance suites** from `@projected/testing`
   (`eventStoreConformance` or `stateStoreConformance`, `checkpointStoreConformance`, `idempotencyStoreConformance`,
   `documentStoreConformance`, `messageTransportConformance`), against a real server. A new
