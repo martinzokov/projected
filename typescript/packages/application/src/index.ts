@@ -85,6 +85,7 @@ export {
 } from "./telemetry.js";
 export { canonicalJson, sha256 } from "./fingerprint.js";
 export { eventMetadataFrom } from "./event-metadata.js";
+export { classifyFailure, fromDependency, type FailureKind, type FromDependencyOptions } from "./dependency.js";
 export {
   catchUp,
   defineEventHandler,

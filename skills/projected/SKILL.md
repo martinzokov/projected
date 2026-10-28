@@ -136,6 +136,8 @@ user just *decide* to do?" — that is the command.
 | `throw` for a business rule | `return Result.err(new SomeError(...))` with an error from `defineError` |
 | `throw` for an impossible state | `panic("why this cannot happen", cause)` — it is a defect |
 | `try/catch` around a port | ports return `Result`; compose with `Result.gen` / `yield*` |
+| `await` an SDK or `fetch` in a driven adapter | wrap it: `fromDependency("name", () => sdk.call())` returns a Result |
+| return `Promise<T>` from a driven port | return `Promise<Result<T, DependencyUnavailable \| DependencyFailure>>` |
 | `await` in the domain | do async work in the handler and pass results into the decision |
 | return an error the contract does not list | add it to the contract's `errors` (a new version if published), or map it |
 | call another service | depend on its contracts through `RemoteService` (`projected-integrations` skill) |

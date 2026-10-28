@@ -9,8 +9,9 @@ category: software-development
 The application never knows *how* it talks to the world. It declares what it needs as a
 **port** (an interface in `src/application/port/driven`), and an **adapter** in
 `src/infrastructure/adapter/driven/<name>/` implements it. The composition root
-(`src/infrastructure/config`) picks the adapter. Every port method returns a `Result` — failures
-are values, never exceptions.
+(`src/infrastructure/config`) picks the adapter. Every asynchronous port method returns
+`Promise<Result<…>>` — failures are values, never exceptions — and `projected check` enforces it
+on both sides (see "Results at the boundary" below).
 
 | Need | Port | Adapter |
 |---|---|---|
@@ -22,6 +23,7 @@ are values, never exceptions.
 | another projected service | `RemoteService<typeof theirContracts>` (framework) | `httpService`, `inProcessService` |
 | send a command asynchronously | `CommandQueue<typeof contracts>` (framework) | `commandQueue` from `@projected/messaging` |
 | a third-party HTTP API | your own, e.g. `PaymentGateway` | your adapter using `httpClient` from `@projected/http` |
+| an SDK that throws (email, storage, a vendor client) | your own, e.g. `Mailer` | your adapter calling the SDK inside `fromDependency` |
 
 ## A port of your own
 
@@ -163,6 +165,30 @@ export const stripePaymentGateway = (http: HttpClient): PaymentGateway => ({
 `httpClient` turns network errors, timeouts and 5xx into `DependencyUnavailable`, unexpected
 bodies into `DependencyFailure`, and statuses you list in `expectedErrors` into
 `HttpStatusError` so the adapter can translate them into business outcomes.
+
+## Results at the boundary
+
+A driven adapter is where outside failures become values. Two rules hold you to it:
+
+- `projected/driven-ports-return-results`: an asynchronous method of a port in
+  `application/port/driven` returns `Promise<Result<T, DependencyUnavailable | DependencyFailure>>`
+  (plus any business error the port reports) — never a bare `Promise<T>`.
+- `projected/driven-adapters-return-results` (type-checked): code in `adapter/driven` awaits only
+  Results. Anything that can reject — an SDK, a driver, raw `fetch` — goes through
+  `fromDependency` from `@projected/application`:
+
+```ts
+// src/infrastructure/adapter/driven/email/ses-mailer.ts
+export const sesMailer = (ses: SESClient): Mailer => ({
+  send: async (message) =>
+    (await fromDependency("email", () => ses.send(new SendEmailCommand(toSes(message))))).map(() => undefined),
+});
+```
+
+`fromDependency` reads network errors, timeouts, aborts and 408/429/5xx statuses as
+`DependencyUnavailable` (retryable: 503, or redelivery for queued commands) and anything else as
+`DependencyFailure` (502). Pass `{ classify: (cause) => "unavailable" | "failure" }` when the SDK
+signals it differently. `Result.tryPromise` is accepted too, when you need your own error.
 
 ## Who is calling, and tracing
 

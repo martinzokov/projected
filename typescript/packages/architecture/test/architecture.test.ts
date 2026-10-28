@@ -172,6 +172,47 @@ describe("one flavour per project (dependency-cruiser)", () => {
   });
 });
 
+describe("Results at driven boundaries (ESLint)", () => {
+  const legacy = `declare function legacyLookup(id: string): Promise<number>;\n`;
+
+  it("rejects a driven port whose async operation does not return a Result", async () => {
+    const report = await checkArchitecture(
+      fixture({ "src/application/port/driven/lookup.ts": `export interface Lookup {\n  find(id: string): Promise<string>;\n}\n` }),
+    );
+
+    expect(rules(report.violations)).toContain("eslint/projected/driven-ports-return-results");
+  });
+
+  it("rejects a driven adapter awaiting a promise that can reject", async () => {
+    const report = await checkArchitecture(
+      fixture({
+        "src/infrastructure/adapter/driven/memory/legacy.ts":
+          legacy + `export const lookup = async (id: string): Promise<number> => {\n  const n = await legacyLookup(id);\n  return n;\n};\n`,
+      }),
+    );
+
+    expect(rules(report.violations)).toContain("eslint/projected/driven-adapters-return-results");
+  });
+
+  it("accepts the same call inside fromDependency, and awaiting Results", async () => {
+    const report = await checkArchitecture(
+      fixture({
+        "src/infrastructure/adapter/driven/memory/legacy.ts":
+          `import { Result, fromDependency } from "@projected/application";\n` +
+          legacy +
+          `export const lookup = (id: string) => fromDependency("legacy", async () => (await legacyLookup(id)) * 2);\n` +
+          `export const both = async (id: string) => {\n` +
+          `  const [a, b] = await Promise.all([lookup(id), lookup(id)]);\n` +
+          `  const c = await lookup(id);\n` +
+          `  return Result.ok([a, b, c]);\n` +
+          `};\n`,
+      }),
+    );
+
+    expect(report.violations).toEqual([]);
+  });
+});
+
 describe("code rules (ESLint)", () => {
   const cases: Array<[string, Edit, string]> = [
     ["throwing in the domain", { "src/domain/x.ts": `export const f = (): never => { throw new Error("no"); };\n` }, "eslint/no-restricted-syntax"],

@@ -64,6 +64,8 @@ From `projectedEslint()` in `@projected/architecture/eslint`:
 | domain, application | `no-restricted-globals` | `fetch`, timers, `process`, `console`, `crypto`, `Buffer`, `require`, storage … |
 | all of `src/` | `@typescript-eslint/ban-ts-comment` | `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` |
 | all of `src/` | `@typescript-eslint/no-explicit-any` | `any` |
+| `application/port/driven` | `projected/driven-ports-return-results` | an asynchronous port operation returning `Promise<T>` instead of `Promise<Result<…>>` |
+| `infrastructure/adapter/driven` | `projected/driven-adapters-return-results` (type-checked) | awaiting a promise that is not a Result, outside `fromDependency` / `Result.tryPromise` |
 | all of `src/` | `@typescript-eslint/triple-slash-reference` | `/// <reference types="node" />` and friends |
 | all of `src/` | `linterOptions.noInlineConfig` | `eslint-disable` comments — ignored *and* reported |
 

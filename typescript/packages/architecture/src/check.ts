@@ -63,7 +63,7 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
   }
   const cruisedFiles = cruised.modules.filter((module) => module.source.startsWith("src/")).length;
 
-  const eslint = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: projectedEslint() });
+  const eslint = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: projectedEslint({ tsconfigRootDir: root }) });
   const results = await eslint.lintFiles(["src/**/*.{ts,mts,cts,tsx}"]);
   for (const result of results) {
     for (const message of result.messages) {

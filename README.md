@@ -61,7 +61,9 @@ another service through a typed client, or through Kafka or NATS.
   one changes.
 - **Failures are values.** [better-result](https://www.npmjs.com/package/better-result) Results
   everywhere: business errors are declared on contracts and checked at compile time,
-  infrastructure errors map to protocol responses, defects are `Panic`s.
+  infrastructure errors map to protocol responses, defects are `Panic`s. Every driven port
+  returns Results, and adapters may not await anything that can reject outside
+  `fromDependency` — enforced by type-checked lint.
 - **Boundaries fail the build.** Following
   [anti-slop](https://github.com/martinzokov/anti-slop): domain and application compile without
   DOM or Node, cross-layer imports are compile errors, dependency-cruiser and ESLint catch the

@@ -1,5 +1,16 @@
-import type { Linter } from "eslint";
+import type { ESLint, Linter } from "eslint";
 import tseslint from "typescript-eslint";
+import { drivenAdaptersReturnResults } from "./rules/driven-adapters-return-results.js";
+import { drivenPortsReturnResults } from "./rules/driven-ports-return-results.js";
+
+/** projected's own rules, as an ESLint plugin registered under the `projected/` prefix. */
+export const projectedPlugin: ESLint.Plugin = {
+  meta: { name: "@projected/architecture" },
+  rules: {
+    "driven-ports-return-results": drivenPortsReturnResults,
+    "driven-adapters-return-results": drivenAdaptersReturnResults,
+  },
+};
 
 /**
  * Code-level rules for a projected app, as an ESLint flat config. They cover what import rules
@@ -77,6 +88,8 @@ const IO_GLOBALS = [
 export interface EslintOptions {
   /** Defaults to `["src"]`. */
   readonly sourceDirs?: readonly string[];
+  /** Where typed rules look for tsconfig files. Defaults to the working directory. */
+  readonly tsconfigRootDir?: string;
 }
 
 /**
@@ -93,7 +106,10 @@ export interface EslintOptions {
 export function projectedEslint(options: EslintOptions = {}): Linter.Config[] {
   const dirs = options.sourceDirs ?? ["src"];
   const glob = (layer: string) => dirs.map((dir) => `${dir}/${layer}**/*.{ts,mts,cts,tsx}`);
-  const plugins = { "@typescript-eslint": tseslint.plugin as unknown as NonNullable<Linter.Config["plugins"]>[string] };
+  const plugins = {
+    "@typescript-eslint": tseslint.plugin as unknown as NonNullable<Linter.Config["plugins"]>[string],
+    projected: projectedPlugin,
+  };
 
   return [
     { ignores: ["**/dist/**", "**/.tsbuild/**", "**/node_modules/**"] },
@@ -121,6 +137,21 @@ export function projectedEslint(options: EslintOptions = {}): Linter.Config[] {
         "no-restricted-syntax": ["error", ...DETERMINISM, ...RESULTS_NOT_EXCEPTIONS],
         "no-restricted-globals": ["error", ...IO_GLOBALS],
       },
+    },
+    {
+      name: "projected/driven-ports",
+      files: glob("application/port/driven/"),
+      rules: { "projected/driven-ports-return-results": "error" },
+    },
+    {
+      // Typed: whether an awaited promise holds a Result is a question for the type checker.
+      name: "projected/driven-adapters",
+      files: glob("infrastructure/adapter/driven/"),
+      languageOptions: {
+        parser: tseslint.parser as Linter.Parser,
+        parserOptions: { projectService: true, tsconfigRootDir: options.tsconfigRootDir ?? process.cwd() },
+      },
+      rules: { "projected/driven-adapters-return-results": "error" },
     },
     {
       name: "projected/domain",

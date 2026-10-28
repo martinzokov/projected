@@ -8,5 +8,6 @@ describe("architecture", () => {
 
     expect(formatViolations(report.violations)).toBe("");
     expect(report.checked.dependencyCruiser).toBeGreaterThan(10);
-  });
+    // Type-checked rules build a TypeScript program for the adapters: seconds, not milliseconds.
+  }, 60_000);
 });
