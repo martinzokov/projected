@@ -371,7 +371,7 @@ redelivery and dead-lettering:
   id and carries a `projected-replay` header. A broker that drops repeated publishes of one id
   MUST deliver a replay as a new message.
 
-The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing`) is the
+The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing/messaging`) is the
 executable form of this section; Kafka and NATS JetStream bindings pass it.
 
 ---
