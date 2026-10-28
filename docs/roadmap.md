@@ -3,8 +3,11 @@
 Built so far, in TypeScript: the kernel, CQRS contracts, the dispatcher, two flavours chosen per
 project (event-sourced, and state-based with a transactional outbox), PostgreSQL persistence for
 both, HTTP and messaging adapters, Kafka and NATS JetStream transports, better-auth
-authentication, duplicate command protection, OpenTelemetry tracing, OpenAPI, enforcement and
-skills. Next steps, roughly in order of value:
+authentication, duplicate command protection, OpenTelemetry tracing and metrics, OpenAPI,
+enforcement with configurable design rules, typed clients for third-party APIs, a living service
+catalog, property-based and mutation testing, scaffolding, health, graceful shutdown and operator
+tasks, guardrails and evals for coding agents, black-box conformance suites, and skills. Next
+steps, roughly in order of value:
 
 ## Persistence
 
@@ -27,15 +30,13 @@ skills. Next steps, roughly in order of value:
 
 - **More auth providers**: a generic JWT/OIDC authenticator (Auth0, Clerk, WorkOS, Cognito,
   Keycloak), then provider packages where claims need mapping; service-to-service credentials.
-- **Metrics and logs** alongside traces (OpenTelemetry), with correlation ids in log records.
-- **Scaffolding**: `projected new service|aggregate|command|query`.
+- **Logs** alongside traces and metrics, with correlation ids in every record.
 - **Typed client generation for other languages** from `openapi.json`.
 - Publishing packages to npm; `npx skills add martinzokov/projected` for the skills.
 
 ## Enforcement
 
 - **Contract compatibility classes**: allow provably compatible changes to published versions.
-- **Aggregate boundaries**: one aggregate per command handler, unless declared.
 - **Composition root size check**.
 
 ## Other languages
