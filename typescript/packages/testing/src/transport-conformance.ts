@@ -1,4 +1,12 @@
-import { REPLAY_HEADER, deadLetterReplay, deadLetterTopic, type Disposition, type Message, type MessageTransport } from "@projected/messaging";
+import {
+  DEAD_LETTER_REASON_HEADER,
+  REPLAY_HEADER,
+  deadLetterReplay,
+  deadLetterTopic,
+  type Disposition,
+  type Message,
+  type MessageTransport,
+} from "@projected/messaging";
 import { describe, expect, it } from "vitest";
 
 export interface TransportUnderTest {
@@ -98,6 +106,7 @@ export function messageTransportConformance(name: string, options: TransportConf
 
       expect(received).toHaveLength(options.maxAttempts);
       expect(dead[0]).toMatchObject({ id: "m-1", body: { n: 1 } });
+      expect(dead[0]?.headers[DEAD_LETTER_REASON_HEADER]).toBe(`failed ${options.maxAttempts} deliveries`);
     }, testTimeout);
 
     it("dead-letters at once a message the handler rejects", async () => {
@@ -114,6 +123,7 @@ export function messageTransportConformance(name: string, options: TransportConf
       await dlq.close();
 
       expect(received).toHaveLength(1);
+      expect(dead[0]?.headers[DEAD_LETTER_REASON_HEADER]).toBe("rejected");
     }, testTimeout);
 
     it("gives every consumer group its own copy of each message", async () => {
@@ -147,6 +157,28 @@ export function messageTransportConformance(name: string, options: TransportConf
       await subscription.close();
 
       expect(received.map((m) => (m.body as { i: number }).i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }, testTimeout);
+
+    it("holds back a later message with the same key while one is retried", async () => {
+      const under = await options.create();
+      const topic = freshTopic();
+      const received: Message[] = [];
+      let later: Promise<unknown> | undefined;
+      const subscription = await under.transport.subscribe(topic, async (message) => {
+        received.push(message);
+        if (message.id !== "first" || message.attempt > 1) return "ack";
+        // The later message is published while the first is being handled, then the first asks to be retried.
+        later = under.transport.publish(topic, { id: "later", key: "same", body: {} });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return "retry";
+      });
+
+      const first = under.transport.publish(topic, { id: "first", key: "same", body: {} });
+      await until(() => received.length === 3, under, "three deliveries");
+      await Promise.all([first, later]);
+      await subscription.close();
+
+      expect(received.map((message) => `${message.id}#${message.attempt}`)).toEqual(["first#1", "first#2", "later#1"]);
     }, testTimeout);
 
     if (options.durable) {

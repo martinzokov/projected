@@ -135,7 +135,7 @@ Not static rules, but every adapter must demonstrate them against a real server:
 | `checkpointStoreConformance` | positions per handler, beyond 32 bits |
 | `idempotencyStoreConformance` | exactly one concurrent claim, replay, release, lock take-over, expiry |
 | `documentStoreConformance` | equality filters, ordering, isolation, schema validation on read |
-| `messageTransportConformance` | delivery, redelivery, dead letters, consumer groups, per-key order, durability |
+| `messageTransportConformance` | delivery, redelivery, dead letters and why, consumer groups, per-key order (also while a message is retried), durability |
 
 The Postgres adapter also has a concurrent writer/reader test for global order that fails when
 its ordering lock is removed.

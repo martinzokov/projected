@@ -371,8 +371,13 @@ redelivery and dead-lettering:
   id and carries a `projected-replay` header. A broker that drops repeated publishes of one id
   MUST deliver a replay as a new message.
 
+A binding within one process has no broker to hold a message for its consumers: it provides
+at-least-once delivery only if `publish` returns once every consumer group has handled the
+message, so that a relay or policy, which publishes from a checkpoint, publishes again after a
+crash.
+
 The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing/messaging`) is the
-executable form of this section; Kafka and NATS JetStream bindings pass it.
+executable form of this section; Kafka, NATS JetStream and the in-memory bindings pass it.
 
 ---
 

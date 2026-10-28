@@ -154,7 +154,10 @@ store's log (the event store itself, or the state store's outbox), so nothing is
 "stored" and "published".
 
 Pick the transport in the composition root: `natsTransport({ servers })` (NATS JetStream, the
-lightweight default) or `kafkaTransport({ brokers })`; `inMemoryTransport()` in tests. The
+lightweight default), `kafkaTransport({ brokers })`, or `inMemoryTransport()` when every producer
+and consumer runs in one process — tests included (`delivery: "queued"` and `drain()` to step
+through). In-memory, subscribe consumers before relays start, and keep relays and policies out
+of `eventHandling.inline` (`docs/messaging.md` has why). The
 sender's principal travels with each command; pass `principal: servicePrincipal` to
 `consumeCommands` when the topic is not yours alone.
 

@@ -51,9 +51,9 @@ export interface EventHandling {
 }
 
 /**
- * The event handling of an application. Every catch-up and rebuild runs in one queue, so that
- * concurrent requests never feed the same events to a handler twice and a rebuild never meets a
- * catch-up halfway through a reset.
+ * The event handling of an application. Each handler's catch-ups and rebuilds run in its own
+ * queue, so that concurrent requests never feed it the same events twice and a rebuild never meets
+ * a catch-up halfway through a reset.
  */
 export function eventHandling(options: EventHandlingOptions | undefined, reporting: EventHandlingReporting): EventHandling {
   const { telemetry } = reporting;
@@ -65,10 +65,12 @@ export function eventHandling(options: EventHandlingOptions | undefined, reporti
   }
   const inlineHandlers = inline === true ? handlers : inline === false ? [] : handlers.filter((handler) => inline.includes(handler.name));
 
-  let queue: Promise<unknown> = Promise.resolve();
-  const enqueue = <T>(work: () => Promise<T>): Promise<T> => {
-    const run = queue.then(work);
-    queue = run.catch(() => undefined);
+  // One queue per handler: two runs never feed a handler the same events, while a handler that
+  // is slow — a relay waiting on its consumers — never holds up the others.
+  const queues = new Map<string, Promise<unknown>>();
+  const enqueue = <T>(handler: EventHandler, work: () => Promise<T>): Promise<T> => {
+    const run = (queues.get(handler.name) ?? Promise.resolve()).then(work);
+    queues.set(handler.name, run.catch(() => undefined));
     return run;
   };
 
@@ -87,28 +89,29 @@ export function eventHandling(options: EventHandlingOptions | undefined, reporti
       );
     });
 
-  const catchUpAll = (
+  const catchUpAll = async (
     selected: readonly EventHandler[],
     onFailure?: (handler: EventHandler, error: EventHandlingError) => void,
-  ): Promise<Result<readonly CatchUpReport[], EventHandlingError>> =>
-    enqueue(async () => {
-      if (options === undefined) return Result.ok([]);
-      const reports: CatchUpReport[] = [];
-      let failure: EventHandlingError | undefined;
-      // Every handler gets its turn: a broken read model must not hold back a relay.
-      for (const handler of selected) {
-        const report = await catchUpOne(handler, options.store, options.checkpoints);
-        if (report.isErr()) {
-          failed(handler, report.error);
-          onFailure?.(handler, report.error);
-          failure ??= report.error;
-          continue;
-        }
-        if (report.value.handled > 0) telemetry.count("projected.events.handled", report.value.handled, { "projected.event_handler": handler.name });
-        reports.push(report.value);
-      }
-      return failure === undefined ? Result.ok(reports) : Result.err(failure);
-    });
+  ): Promise<Result<readonly CatchUpReport[], EventHandlingError>> => {
+    if (options === undefined) return Result.ok([]);
+    // Side by side, each in its own queue: a broken read model must not hold back a relay.
+    const reports = await Promise.all(
+      selected.map((handler) =>
+        enqueue(handler, async () => {
+          const report = await catchUpOne(handler, options.store, options.checkpoints);
+          if (report.isErr()) {
+            failed(handler, report.error);
+            onFailure?.(handler, report.error);
+          } else if (report.value.handled > 0) {
+            telemetry.count("projected.events.handled", report.value.handled, { "projected.event_handler": handler.name });
+          }
+          return report;
+        }),
+      ),
+    );
+    const failure = reports.find((report) => report.isErr());
+    return failure === undefined ? Result.ok(reports.map((report) => report.unwrap())) : Result.err(failure.error);
+  };
 
   return {
     handlers,
@@ -120,7 +123,7 @@ export function eventHandling(options: EventHandlingOptions | undefined, reporti
     },
     catchUp: () => catchUpAll(handlers),
     rebuild: (handler) =>
-      enqueue(async (): Promise<Result<CatchUpReport, EventHandlingError>> => {
+      enqueue(handler, async (): Promise<Result<CatchUpReport, EventHandlingError>> => {
         if (options === undefined) return Result.ok({ handler: handler.name, handled: 0, position: 0 });
         if (handler.reset !== undefined) {
           const reset = await handler.reset();
@@ -150,7 +153,7 @@ export function eventHandling(options: EventHandlingOptions | undefined, reporti
       return Result.ok(backlogs);
     },
     idle: async () => {
-      await queue;
+      await Promise.all(queues.values());
     },
   };
 }

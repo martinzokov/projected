@@ -147,11 +147,19 @@ describe("event relay", () => {
   });
 });
 
-messageTransportConformance("in-memory", {
+messageTransportConformance("in-memory, queued", {
   create: () => {
-    const transport = inMemoryTransport({ maxAttempts: 3 });
+    const transport = inMemoryTransport({ delivery: "queued", maxAttempts: 3 });
     return { transport, drain: () => transport.drain() };
   },
   maxAttempts: 3,
   durable: true,
 });
+for (const delivery of ["async", "acknowledged"] as const) {
+  messageTransportConformance(`in-memory, ${delivery}`, {
+    create: () => ({ transport: inMemoryTransport({ delivery, maxAttempts: 3, retryDelayMs: () => 5, ackTimeoutMs: 2_000 }) }),
+    maxAttempts: 3,
+    durable: true,
+    timeoutMs: 5_000,
+  });
+}

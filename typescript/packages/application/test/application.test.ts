@@ -511,6 +511,26 @@ describe("event handlers", () => {
     expect(later.get("t-1")).toBe("Printer");
   });
 
+  it("never hold up one handler's catch-up behind another that is stuck", async () => {
+    let release: () => void = () => {};
+    const stuck = defineEventHandler({
+      name: "stuck",
+      events: [TicketOpened],
+      handle: { TicketOpened: () => new Promise((resolve) => (release = () => resolve(Result.ok(undefined)))) },
+    });
+    const titles = new Map<string, string>();
+    const { app } = deskWith([stuck, titleProjection(titles)], ["open-ticket-titles"]);
+    await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" });
+    const background = app.catchUp();
+
+    const second = await app.execute(OpenTicket, { ticketId: "t-2", title: "Coffee" });
+
+    expect(second.isOk()).toBe(true);
+    expect(titles.get("t-2")).toBe("Coffee");
+    release();
+    await background;
+  });
+
   it("refuse an inline list that names no handler", () => {
     expect(() => deskWith([titleProjection(new Map())], ["open-ticket-title"])).toThrow(/inline names no event handler: open-ticket-title/);
   });
