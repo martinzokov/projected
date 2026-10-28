@@ -65,7 +65,11 @@ const read = (root: string, file: string) => readFileSync(join(root, file), "utf
 
 /** Run a tool in the generated service as its developer would, outside this test runner. */
 async function inService(root: string, script: string, ...args: string[]): Promise<{ code: number; output: string }> {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("VITEST")));
+  // Plain output, whatever the runner's terminal: CI forces colour, which splits up the summary.
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("VITEST") && key !== "FORCE_COLOR")),
+    NO_COLOR: "1",
+  };
   try {
     const { stdout, stderr } = await exec(process.execPath, [script, ...args], { cwd: root, env, maxBuffer: 16 * 1024 * 1024 });
     return { code: 0, output: `${stdout}${stderr}` };
