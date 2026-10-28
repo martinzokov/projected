@@ -31,6 +31,8 @@ export interface NatsTransportOptions {
    */
   readonly maxInFlight?: number;
   readonly onError?: (error: unknown) => void;
+  /** How long a readiness ping waits for the server. Defaults to 2 s. */
+  readonly pingTimeoutMs?: number;
 }
 
 const MESSAGE_ID = "projected-message-id";
@@ -39,6 +41,22 @@ const DEAD_LETTER_REASON = "projected-dead-letter-reason";
 /** NATS consumer names may not contain `.`, `*`, `>` or whitespace. */
 const consumerName = (group: string, topic: string) => `${group}__${topic}`.replace(/[^A-Za-z0-9_-]/g, "_");
 
+/** `work`, or a rejection once `ms` have passed without an answer. */
+const within = <T>(ms: number, work: Promise<T>): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+
 /** Create a NATS JetStream {@link MessageTransport}. Call `close()` on shutdown. */
 export function natsTransport(options: NatsTransportOptions): MessageTransport & { close(): Promise<void> } {
   const streamName = options.stream ?? "PROJECTED";
@@ -46,6 +64,7 @@ export function natsTransport(options: NatsTransportOptions): MessageTransport &
   const maxAttempts = options.maxAttempts ?? 5;
   const retryDelay = options.retryDelayMs ?? ((attempt: number) => Math.min(200 * 2 ** (attempt - 1), 10_000));
   const onError = options.onError ?? (() => undefined);
+  const pingTimeoutMs = options.pingTimeoutMs ?? 2000;
   const subjectOf = (topic: string) => `${prefix}.${topic}`;
 
   let connecting: Promise<NatsConnection> | undefined;
@@ -74,6 +93,15 @@ export function natsTransport(options: NatsTransportOptions): MessageTransport &
   const subscriptions = new Set<Subscription>();
 
   return {
+    ping: async () => {
+      try {
+        await within(pingTimeoutMs, connection().then((nc) => nc.flush()));
+        return Result.ok(undefined);
+      } catch (cause) {
+        return Result.err(new DependencyUnavailable({ dependency: "nats", message: `nats: the server did not answer (${String(cause)})`, cause }));
+      }
+    },
+
     publish: async (topic, message) => {
       try {
         await send(topic, message.id, JSON.stringify(message.body), {

@@ -13,6 +13,7 @@ export {
   type OutgoingMessage,
   type SubscribeOptions,
   type Subscription,
+  transportReadiness,
 } from "./transport.js";
 export { CommandMessage, commandQueue, consumeCommands, type CommandQueueOptions, type ConsumeCommandsOptions } from "./commands.js";
 export { EventMessage, consumeEvents, eventRelay, type ConsumeEventsOptions, type EventRelayOptions } from "./events.js";

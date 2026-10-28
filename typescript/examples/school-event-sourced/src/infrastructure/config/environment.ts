@@ -1,6 +1,6 @@
 import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory/event-sourced";
-import { fromPool, migrate, postgresStores } from "@projected/store-postgres/event-sourced";
-import { eventRelay, type MessageTransport } from "@projected/messaging";
+import { fromPool, migrate, postgresReadiness, postgresStores } from "@projected/store-postgres/event-sourced";
+import { eventRelay, transportReadiness, type MessageTransport } from "@projected/messaging";
 import { kafkaTransport } from "@projected/kafka";
 import { natsTransport } from "@projected/nats";
 import { betterAuth } from "better-auth";
@@ -8,7 +8,7 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { getMigrations } from "better-auth/db/migration";
 import { admin, bearer } from "better-auth/plugins";
 import pg from "pg";
-import type { Clock } from "@projected/application/event-sourced";
+import type { Clock, ReadinessCheck } from "@projected/application/event-sourced";
 
 /**
  * Picks real infrastructure from the environment, and in-memory stand-ins otherwise, so the
@@ -46,17 +46,23 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
   if (pool !== undefined) await (await getMigrations(authOptions)).runMigrations();
   const auth = betterAuth(authOptions);
 
-  const transports: Array<MessageTransport & { close(): Promise<void> }> = [];
-  if (env.KAFKA_BROKERS !== undefined) transports.push(kafkaTransport({ brokers: env.KAFKA_BROKERS.split(","), clientId: "school" }));
-  if (env.NATS_URL !== undefined) transports.push(natsTransport({ servers: env.NATS_URL }));
-  const relays = transports.map((transport, index) => eventRelay(transport, { name: `school-events-${index + 1}`, topic: "school.events" }));
+  const transports: Array<{ name: string; transport: MessageTransport & { close(): Promise<void> } }> = [];
+  if (env.KAFKA_BROKERS !== undefined) transports.push({ name: "kafka", transport: kafkaTransport({ brokers: env.KAFKA_BROKERS.split(","), clientId: "school" }) });
+  if (env.NATS_URL !== undefined) transports.push({ name: "nats", transport: natsTransport({ servers: env.NATS_URL }) });
+  const relays = transports.map(({ transport }, index) => eventRelay(transport, { name: `school-events-${index + 1}`, topic: "school.events" }));
+  // Not ready while the database or a broker the events go to is unreachable.
+  const readiness: ReadinessCheck[] = [
+    ...(pool === undefined ? [] : [postgresReadiness(fromPool(pool))]),
+    ...transports.map(({ name, transport }) => transportReadiness(name, transport)),
+  ];
 
   return {
     ...stores,
     auth,
     eventHandlers: relays,
+    readiness,
     close: async () => {
-      await Promise.all(transports.map((transport) => transport.close()));
+      await Promise.all(transports.map(({ transport }) => transport.close()));
       await pool?.end();
     },
   };

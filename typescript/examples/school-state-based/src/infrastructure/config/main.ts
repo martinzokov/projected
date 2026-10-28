@@ -2,7 +2,7 @@ import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, r
 import { httpHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
-import { randomIds, systemClock } from "@projected/runtime";
+import { monitorBacklog, randomIds, shutdownGracefully, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { composeSchool } from "./school.js";
 
@@ -30,6 +30,15 @@ const server = await serve(
 );
 console.log(`school is listening on ${server.url} — OpenAPI document at ${server.url}/openapi.json`);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.once(signal, () => void server.close().then(infrastructure.close).then(() => process.exit(0)));
-}
+// Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
+const backlog = monitorBacklog(school, { clock, onError: (error) => console.error("backlog", error.message) });
+
+// On SIGTERM: report draining, give load balancers SHUTDOWN_GRACE_MS to notice, stop taking
+// requests, finish those in flight, then close connections.
+shutdownGracefully({
+  app: school,
+  intake: [server, backlog],
+  close: infrastructure.close,
+  graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
+  log: (message) => console.log(message),
+});

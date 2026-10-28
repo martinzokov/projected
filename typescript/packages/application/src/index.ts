@@ -70,6 +70,7 @@ export type {
   Metadata,
   NewEvent,
   Principal,
+  ReadinessCheck,
   RecordedEvent,
 } from "./ports.js";
 export {
@@ -103,9 +104,11 @@ export {
   type Application,
   type ApplicationOptions,
   type CommandHandler,
+  type EventHandlerBacklog,
   type EventHandlingOptions,
   type Handler,
   type HandlerMap,
+  type HealthReport,
   type IdempotencyOptions,
   type QueryHandler,
 } from "./application.js";

@@ -216,16 +216,38 @@ export function openApiDocument(contracts: AnyContracts, options: OpenApiOptions
     };
   }
 
-  paths[`${basePath}/health`] = {
-    get: {
-      operationId: "health",
-      tags: ["system"],
-      summary: "Liveness",
-      responses: {
-        "200": {
-          description: "The service is up.",
-          content: { "application/json": { schema: { type: "object", properties: { status: { const: "ok" } } } } },
+  const live = {
+    "200": {
+      description: "The service is up.",
+      content: { "application/json": { schema: { type: "object", properties: { status: { const: "ok" } } } } },
+    },
+  };
+  paths[`${basePath}/health`] = { get: { operationId: "health", tags: ["system"], summary: "Liveness", responses: live } };
+  paths[`${basePath}/health/live`] = { get: { operationId: "healthLive", tags: ["system"], summary: "Liveness", responses: live } };
+  const report = {
+    type: "object",
+    required: ["status", "checks"],
+    properties: {
+      status: { enum: ["ready", "unready", "draining"] },
+      checks: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["name", "status"],
+          properties: { name: { type: "string" }, status: { enum: ["up", "down"] }, message: { type: "string" } },
         },
+      },
+    },
+  };
+  paths[`${basePath}/health/ready`] = {
+    get: {
+      operationId: "healthReady",
+      tags: ["system"],
+      summary: "Readiness",
+      description: "Whether the service should be sent traffic: every readiness check passes, and it is not shutting down.",
+      responses: {
+        "200": { description: "Ready.", content: { "application/json": { schema: report } } },
+        "503": { description: "A dependency is down, or the service is draining.", content: { "application/json": { schema: report } } },
       },
     },
   };

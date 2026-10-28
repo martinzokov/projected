@@ -22,6 +22,17 @@ afterAll(async () => {
 
 const suite = brokers === undefined ? describe.skip : describe;
 
+describe("kafka without a broker", () => {
+  it("answers a readiness ping with unavailable, within its timeout", async () => {
+    const transport = kafkaTransport({ brokers: ["127.0.0.1:1"], pingTimeoutMs: 500 });
+    transports.push(transport);
+
+    const pinged = await transport.ping();
+
+    expect(pinged.isErr() && pinged.error).toMatchObject({ _tag: "DependencyUnavailable", dependency: "kafka" });
+  }, 5_000);
+});
+
 suite("kafka", () => {
   messageTransportConformance("kafka", { create: () => ({ transport: create() }), maxAttempts: 3, durable: true, timeoutMs: 30_000 });
 

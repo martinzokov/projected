@@ -233,3 +233,8 @@ signals it differently. `Result.tryPromise` is accepted too, when you need your 
 `src/infrastructure/config` is the only place that knows every layer. Keep it to wiring —
 create adapters, build repositories, call `createApplication`, start servers. No logic: nothing
 lints its size, so review it.
+
+Give `createApplication({ readiness })` a check for every dependency the service cannot serve
+without — `postgresReadiness(sql)`, `transportReadiness("kafka", transport)` — so
+`GET /health/ready` tells the truth, and end `main.ts` with `monitorBacklog` (event handler lag)
+and `shutdownGracefully` (drain, then stop). See `docs/operations.md`.

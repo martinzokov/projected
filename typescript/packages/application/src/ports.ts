@@ -98,6 +98,17 @@ export interface EventLog {
   }): Promise<Result<readonly RecordedEvent[], DependencyUnavailable>>;
 }
 
+/**
+ * Something the service cannot serve without — its database, its broker — asked by readiness
+ * probes (`GET /health/ready`). Answer promptly: bound the check with a timeout, since a probe
+ * that hangs is worse than one that fails.
+ */
+export interface ReadinessCheck {
+  /** Names the dependency in the health report: `postgres`, `kafka`. */
+  readonly name: string;
+  check(): Promise<Result<void, DependencyUnavailable | DependencyFailure>>;
+}
+
 /** Remembers how far each event handler has read the global log. */
 export interface CheckpointStore {
   /** The last processed global position, 0 when the handler has never run. */

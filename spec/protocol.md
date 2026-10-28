@@ -167,7 +167,8 @@ an event continue the trace that caused it.
 | `POST /commands` | `{ "commands": [item, ...] }` | run a batch of commands |
 | `POST /queries` | `{ "queries": [item, ...] }` | run a batch of queries |
 | `GET /openapi.json` | — | OpenAPI 3.1 document derived from the contracts |
-| `GET /health` | — | `{ "status": "ok" }` |
+| `GET /health/live` (and `GET /health`) | — | `{ "status": "ok" }`: the process answers (§3.5) |
+| `GET /health/ready` | — | a health report: whether to send the service traffic (§3.5) |
 
 A service MAY mount all routes under a base path (`/api/commands/...`). Queries use `POST`
 because their input is a body, like a command's.
@@ -236,6 +237,26 @@ reach a business outcome is `{ "status": "failed", "problem": <problem details> 
 
 Batch items get the message id `<message id>/<index>` and share the batch's correlation id. A
 batch sent with an `Idempotency-Key` protects each item under `<key>/<index>`.
+
+### 3.5 Health
+
+Both health routes are public and MUST NOT run any operation.
+
+- **Liveness** (`GET /health/live`, `GET /health`) answers `200 { "status": "ok" }` whenever the
+  process can answer at all. Restart a service only when this fails.
+- **Readiness** (`GET /health/ready`) answers a `HealthReport` (wire schema): one entry per
+  dependency the service cannot serve without, `up` or `down` with a message, and a `status`.
+  It is `200` when `status` is `ready` — every check up — and `503` when it is `unready` or
+  `draining`. Checks MUST answer within a bounded time: a dependency that does not answer is
+  `down`.
+
+```json
+{ "status": "unready", "checks": [{ "name": "postgres", "status": "up" }, { "name": "kafka", "status": "down", "message": "kafka: no broker answered" }] }
+```
+
+A service that is shutting down MUST report `draining` from the moment it decides to stop, keep
+serving what it receives while load balancers notice, then stop accepting work and finish what
+is in flight before it exits.
 
 ---
 
@@ -311,6 +332,8 @@ redelivery and dead-lettering:
 - **Keys.** A message MAY have a key; messages with the same key MUST be delivered to a group in
   publish order. Relayed events use their stream name as the key.
 - **Headers.** Message headers carry `traceparent`/`tracestate` and the message id.
+- **Readiness.** A binding MUST be able to tell, within a bounded time, whether its broker
+  answers, so that a service is not reported ready (§3.5) while it cannot publish or consume.
 
 The TypeScript conformance suite (`messageTransportConformance` in `@projected/testing`) is the
 executable form of this section; Kafka and NATS JetStream bindings pass it.

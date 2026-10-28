@@ -154,6 +154,7 @@ export const ${camel(name)}Contracts = defineContracts({
   type EventHandler,
   type IdGenerator,
   type IdempotencyStore,
+  type ReadinessCheck,
   type ${s.type},
   type Telemetry,
 } from "@projected/application/${flavour}";
@@ -172,6 +173,8 @@ ${s.doc}  readonly ${s.name}: ${s.type};
   readonly telemetry?: Telemetry;
   /** Further event handlers, e.g. a relay publishing events to a broker. */
   readonly eventHandlers?: readonly EventHandler[];
+  /** What the service cannot serve without, reported by \`GET /health/ready\`. */
+  readonly readiness?: readonly ReadinessCheck[];
   readonly onDefect?: (defect: Error) => void;
 }
 
@@ -191,13 +194,14 @@ export function compose${Name}(infrastructure: ${Name}Infrastructure) {
       checkpoints,
     },
     idempotency: { store: idempotency },
+    readiness: infrastructure.readiness ?? [],
     ...(telemetry === undefined ? {} : { telemetry }),
     ...(infrastructure.onDefect === undefined ? {} : { onDefect: infrastructure.onDefect }),
   });
 }
 `,
     "src/infrastructure/config/environment.ts": `import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryIdempotencyStore, ${s.memory} } from "@projected/store-memory/${flavour}";
-import { fromPool, migrate, postgresStores } from "@projected/store-postgres/${flavour}";
+import { fromPool, migrate, postgresReadiness, postgresStores } from "@projected/store-postgres/${flavour}";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { getMigrations } from "better-auth/db/migration";
@@ -242,6 +246,8 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
   return {
     ...stores,
     auth,
+    // Not ready while the database is unreachable.
+    readiness: pool === undefined ? [] : [postgresReadiness(fromPool(pool))],
     close: async () => {
       await pool?.end();
     },
@@ -252,7 +258,7 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
 import { httpHandler } from "@projected/http";
 import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
-import { randomIds, systemClock } from "@projected/runtime";
+import { monitorBacklog, randomIds, shutdownGracefully, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { compose${Name} } from "./${name}.js";
 
@@ -276,9 +282,18 @@ const server = await serve(
 );
 console.log(\`${name} is listening on \${server.url} — OpenAPI document at \${server.url}/openapi.json\`);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.once(signal, () => void server.close().then(infrastructure.close).then(() => process.exit(0)));
-}
+// Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
+const backlog = monitorBacklog(app, { clock, onError: (error) => console.error("backlog", error.message) });
+
+// On SIGTERM: report draining, give load balancers SHUTDOWN_GRACE_MS to notice, stop taking
+// requests, finish those in flight, then close connections.
+shutdownGracefully({
+  app,
+  intake: [server, backlog],
+  close: infrastructure.close,
+  graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
+  log: (message) => console.log(message),
+});
 `,
     [`test/${name}.ts`]: `import { httpHandler } from "@projected/http";
 import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryIdempotencyStore, ${s.memory} } from "@projected/store-memory/${flavour}";

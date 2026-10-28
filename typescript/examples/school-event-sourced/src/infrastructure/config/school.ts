@@ -8,6 +8,7 @@ import {
   type EventStore,
   type IdGenerator,
   type IdempotencyStore,
+  type ReadinessCheck,
   type Telemetry,
 } from "@projected/application/event-sourced";
 import { Student } from "../../domain/student/student.js";
@@ -33,6 +34,8 @@ export interface SchoolInfrastructure {
   readonly telemetry?: Telemetry;
   /** Further event handlers, e.g. a relay publishing events to a broker. */
   readonly eventHandlers?: readonly EventHandler[];
+  /** What the school cannot serve without, reported by `GET /health/ready`. */
+  readonly readiness?: readonly ReadinessCheck[];
   readonly onDefect?: (defect: Error) => void;
 }
 
@@ -63,6 +66,7 @@ export function composeSchool(infrastructure: SchoolInfrastructure) {
       checkpoints,
     },
     idempotency: { store: idempotency },
+    readiness: infrastructure.readiness ?? [],
     ...(telemetry === undefined ? {} : { telemetry }),
     ...(infrastructure.onDefect === undefined ? {} : { onDefect: infrastructure.onDefect }),
   });

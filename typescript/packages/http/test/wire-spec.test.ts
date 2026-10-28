@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
-import { Result, createApplication, defineCommand, defineContracts, defineError, z } from "@projected/application";
+import { DependencyUnavailable, Result, createApplication, defineCommand, defineContracts, defineError, z } from "@projected/application";
 import { httpHandler } from "@projected/http";
 import { inMemoryIdempotencyStore } from "@projected/store-memory";
 import { principal, sequentialIds, tokenAuthenticator } from "@projected/testing";
@@ -91,5 +91,20 @@ describe("HTTP binding conforms to spec/wire.schema.json", () => {
 
     expect(conforms("CommandBatch", batch)).toEqual([]);
     expect(conforms("BatchResult", await post("/commands", batch))).toEqual([]);
+  });
+
+  it("for readiness reports, ready or not", async () => {
+    const app = createApplication(defineContracts({ name: "club", access: "public" }), {
+      ids: sequentialIds(),
+      readiness: [
+        { name: "postgres", check: async () => Result.ok(undefined) },
+        { name: "kafka", check: async () => Result.err(new DependencyUnavailable({ dependency: "kafka", message: "kafka: no broker answered" })) },
+      ],
+    });
+
+    const report = await (await httpHandler(app)(new Request("http://club.test/health/ready"))).json();
+
+    expect(conforms("HealthReport", report)).toEqual([]);
+    expect(conforms("HealthReport", { status: "ready", checks: [] })).toEqual([]);
   });
 });

@@ -31,6 +31,7 @@ import type {
   IdempotencyStore,
   Metadata,
   Principal,
+  ReadinessCheck,
 } from "./ports.js";
 import { currentTrace, noTelemetry, type Span, type Telemetry } from "./telemetry.js";
 import { decodeWireError, encodeWireError, toValidationIssues, type OperationRequest, type OperationResult } from "./wire.js";
@@ -107,7 +108,25 @@ export type ApplicationOptions<C extends AnyContracts> = HandlerOptions<C> & {
   readonly onDefect?: (defect: OperationDefect) => void;
   /** Called when an inline catch-up fails. The command itself has already succeeded. */
   readonly onEventHandlingError?: (error: InfrastructureError) => void;
+  /** What the service cannot serve without, asked by {@link Application.health}. */
+  readonly readiness?: readonly ReadinessCheck[];
 };
+
+/** Whether the service should be sent traffic, and why not. */
+export interface HealthReport {
+  /** `ready` when every check passes; `draining` once {@link Application.drain} was called. */
+  readonly status: "ready" | "unready" | "draining";
+  readonly checks: ReadonlyArray<{ readonly name: string; readonly status: "up" | "down"; readonly message?: string }>;
+}
+
+/** How far one event handler is behind the log it reads. */
+export interface EventHandlerBacklog {
+  readonly handler: string;
+  /** The global position it has processed up to. */
+  readonly position: number;
+  /** The oldest event it has yet to process — absent when it is caught up. */
+  readonly oldestPending?: { readonly globalPosition: number; readonly recordedAt: string };
+}
 
 /** A service: contracts bound to handlers, callable from any transport. */
 export interface Application<C extends AnyContracts = AnyContracts> {
@@ -123,6 +142,16 @@ export interface Application<C extends AnyContracts = AnyContracts> {
   ): Promise<Result<OutputOf<Op>, ErrorOf<Op> | DispatchError>>;
   /** Feed every event handler the events recorded since its checkpoint. */
   catchUp(): Promise<Result<readonly CatchUpReport[], InfrastructureError>>;
+  /** Ask every readiness check; `draining` from the moment {@link drain} is called. */
+  health(): Promise<HealthReport>;
+  /**
+   * Stop reporting ready, then wait for every operation and catch-up in flight to finish. Call it
+   * first when shutting down, before closing servers and consumers (`shutdownGracefully` in
+   * `@projected/runtime` does it in order).
+   */
+  drain(): Promise<void>;
+  /** For each event handler, its checkpoint and the oldest event it has not processed yet. */
+  backlog(): Promise<Result<readonly EventHandlerBacklog[], InfrastructureError>>;
 }
 
 /** Why a principal may not run an operation under `access`, or `undefined` when it may. */
@@ -142,18 +171,6 @@ export function checkAccess(
 }
 
 /**
- * Bind contracts to handlers. This is the only place handlers are registered, and it lives in
- * the composition root (`src/infrastructure/config`).
- *
- * ```ts
- * const app = createApplication(schoolContracts, {
- *   ids,
- *   commands: { "enlist-student@1": enlistStudent({ students, ids }) },
- *   queries: { "enlisted-students-on-joining-date@1": enlistedStudentsOnJoiningDate({ directory }) },
- * });
- * ```
- */
-/**
  * Why something went wrong, for the defect's message. Combinators wrap a panic in their own
  * ("mapError callback threw"), so the reason worth reading is the deepest panic in the cause
  * chain — or, when nothing panicked, the deepest error.
@@ -168,6 +185,18 @@ function rootReason(cause: unknown): string | undefined {
   return deepestPanic ?? deepest;
 }
 
+/**
+ * Bind contracts to handlers. This is the only place handlers are registered, and it lives in
+ * the composition root (`src/infrastructure/config`).
+ *
+ * ```ts
+ * const app = createApplication(schoolContracts, {
+ *   ids,
+ *   commands: { "enlist-student@1": enlistStudent({ students, ids }) },
+ *   queries: { "enlisted-students-on-joining-date@1": enlistedStudentsOnJoiningDate({ directory }) },
+ * });
+ * ```
+ */
 export function createApplication<C extends AnyContracts>(contracts: C, options: ApplicationOptions<C>): Application<C> {
   const telemetry = options.telemetry ?? noTelemetry;
   const handlers = new Map<string, Handler<AnyOperationContract>>();
@@ -195,6 +224,7 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       for (const handler of eventHandling.handlers) {
         const report = await catchUp(handler, eventHandling.store, eventHandling.checkpoints, { telemetry });
         if (report.isErr()) return Result.err(report.error);
+        if (report.value.handled > 0) telemetry.count("projected.events.handled", report.value.handled, { "projected.event_handler": handler.name });
         reports.push(report.value);
       }
       return Result.ok(reports);
@@ -299,6 +329,53 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
     return outcome;
   };
 
+  // Work in flight, for drain() to wait on.
+  const inFlight = new Set<Promise<unknown>>();
+  let draining = false;
+  const track = <T>(work: Promise<T>): Promise<T> => {
+    inFlight.add(work);
+    void work.finally(() => inFlight.delete(work));
+    return work;
+  };
+
+  const health = async (): Promise<HealthReport> => {
+    const checks = await Promise.all(
+      (options.readiness ?? []).map(async (readiness) => {
+        const outcome = await readiness.check().catch((cause: unknown) => Result.err({ message: `check threw: ${String(cause)}` }));
+        return outcome.isOk()
+          ? { name: readiness.name, status: "up" as const }
+          : { name: readiness.name, status: "down" as const, message: outcome.error.message };
+      }),
+    );
+    const status = draining ? "draining" : checks.every((check) => check.status === "up") ? "ready" : "unready";
+    return { status, checks };
+  };
+
+  const drain = async (): Promise<void> => {
+    draining = true;
+    // Work started while waiting is waited for too.
+    while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+    await catchUpQueue;
+  };
+
+  const backlog = async (): Promise<Result<readonly EventHandlerBacklog[], InfrastructureError>> => {
+    if (eventHandling === undefined) return Result.ok([]);
+    const backlogs: EventHandlerBacklog[] = [];
+    for (const handler of eventHandling.handlers) {
+      const position = await eventHandling.checkpoints.load(handler.name);
+      if (position.isErr()) return Result.err(position.error);
+      const next = await eventHandling.store.readAll({ after: position.value, limit: 1 });
+      if (next.isErr()) return Result.err(next.error);
+      const pending = next.value[0];
+      backlogs.push({
+        handler: handler.name,
+        position: position.value,
+        ...(pending === undefined ? {} : { oldestPending: { globalPosition: pending.globalPosition, recordedAt: pending.recordedAt } }),
+      });
+    }
+    return Result.ok(backlogs);
+  };
+
   const dispatch = (request: OperationRequest): Promise<Result<OperationResult, DispatchError>> => {
     const contract = contracts.find(request.kind, request.type, request.version);
     const handler = contract && handlers.get(`${contract.kind}:${contract.key}`);
@@ -349,16 +426,21 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
           return run(contract, handler, input.data, metadata);
         })();
 
-        outcome.match({
-          ok: (result) =>
-            span.setAttributes({
-              "projected.outcome": result.status,
-              "projected.error.type": result.status === "error" ? result.error.type : undefined,
-            }),
+        const result = outcome.match<{ outcome: string; errorType: string | undefined }>({
+          ok: (value) => ({ outcome: value.status, errorType: value.status === "error" ? value.error.type : undefined }),
           err: (error) => {
-            span.setAttributes({ "projected.outcome": "failed", "projected.error.type": error._tag });
             span.fail(error.message);
+            return { outcome: "failed", errorType: error._tag };
           },
+        });
+        span.setAttributes({ "projected.outcome": result.outcome, "projected.error.type": result.errorType });
+        telemetry.count("projected.operations", 1, {
+          "projected.service": contracts.name,
+          "projected.operation.kind": contract.kind,
+          "projected.operation.type": contract.type,
+          "projected.operation.version": contract.version,
+          "projected.outcome": result.outcome,
+          "projected.error.type": result.errorType,
         });
         return outcome;
       },
@@ -368,16 +450,19 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
   return {
     contracts,
     telemetry,
-    dispatch,
+    dispatch: (request) => track(dispatch(request)),
     execute: async (contract, input, metadata) => {
       const { kind, type, version } = contract as AnyOperationContract;
-      const dispatched = await dispatch({ kind, type, version, input, ...(metadata === undefined ? {} : { metadata }) });
+      const dispatched = await track(dispatch({ kind, type, version, input, ...(metadata === undefined ? {} : { metadata }) }));
       if (dispatched.isErr()) return Result.err(dispatched.error);
       const result = dispatched.value;
       if (result.status === "ok") return Result.ok(result.value as OutputOf<typeof contract>);
       const error = decodeWireError(contract, result.error);
       return error === undefined ? defect(contract, `cannot decode error ${result.error.type}`) : Result.err(error);
     },
-    catchUp: runCatchUp,
+    catchUp: () => track(runCatchUp()),
+    health,
+    drain,
+    backlog,
   };
 }

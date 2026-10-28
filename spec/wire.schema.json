@@ -203,6 +203,49 @@
         }
       }
     },
+    "HealthReport": {
+      "description": "GET /health/ready: whether the service should be sent traffic. 200 when status is ready, 503 otherwise.",
+      "type": "object",
+      "required": [
+        "status",
+        "checks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ready",
+            "unready",
+            "draining"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "status"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "up",
+                  "down"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "CommandMessage": {
       "type": "object",
       "required": [

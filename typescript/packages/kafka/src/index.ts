@@ -27,11 +27,29 @@ export interface KafkaTransportOptions {
   readonly createTopics?: false | { readonly partitions: number; readonly replicas: number };
   /** Errors outside any one message: lost connections, failed commits. */
   readonly onError?: (error: unknown) => void;
+  /** How long a readiness ping waits for the broker. Defaults to 2 s. */
+  readonly pingTimeoutMs?: number;
 }
 
 const MESSAGE_ID = "projected-message-id";
 const DEAD_LETTER_REASON = "projected-dead-letter-reason";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** `work`, or a rejection once `ms` have passed without an answer. */
+const within = <T>(ms: number, work: Promise<T>): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 
 /** Create a Kafka-backed {@link MessageTransport}. Call `close()` on shutdown. */
 export function kafkaTransport(options: KafkaTransportOptions): MessageTransport & { close(): Promise<void> } {
@@ -41,6 +59,7 @@ export function kafkaTransport(options: KafkaTransportOptions): MessageTransport
   const retryDelay = options.retryDelayMs ?? ((attempt: number) => Math.min(200 * 2 ** (attempt - 1), 10_000));
   const createTopics = options.createTopics ?? { partitions: 1, replicas: 1 };
   const onError = options.onError ?? (() => undefined);
+  const pingTimeoutMs = options.pingTimeoutMs ?? 2000;
 
   let producer: Producer<string, string, string, string> | undefined;
   const producerOf = () =>
@@ -74,6 +93,15 @@ export function kafkaTransport(options: KafkaTransportOptions): MessageTransport
   const subscriptions = new Set<Subscription>();
 
   const transport: MessageTransport & { close(): Promise<void> } = {
+    ping: async () => {
+      try {
+        await within(pingTimeoutMs, producerOf().metadata({ topics: [], forceUpdate: true }));
+        return Result.ok(undefined);
+      } catch (cause) {
+        return Result.err(new DependencyUnavailable({ dependency: "kafka", message: `kafka: no broker answered (${String(cause)})`, cause }));
+      }
+    },
+
     publish: async (topic, message) => {
       try {
         await send(topic, message.key ?? message.id, JSON.stringify(message.body), { ...message.headers, [MESSAGE_ID]: message.id });

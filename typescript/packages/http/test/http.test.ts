@@ -213,10 +213,46 @@ describe("httpHandler", () => {
     const h = handler();
 
     const health = await h(new Request("http://library.test/health"));
+    const live = await h(new Request("http://library.test/health/live"));
     const openapi = await h(new Request("http://library.test/openapi.json"));
 
     expect(await health.json()).toEqual({ status: "ok" });
+    expect(await live.json()).toEqual({ status: "ok" });
     expect(((await openapi.json()) as { openapi: string }).openapi).toBe("3.1.0");
+  });
+
+  it("answers readiness with the application's health report: 200 when ready, 503 when a dependency is down or it drains", async () => {
+    const readiness = { up: true };
+    const app = createApplication(library, {
+      ids: sequentialIds(),
+      commands: { "borrow-book@1": () => Result.ok({ dueOn: "2024-02-01" }), "explode@1": () => Result.ok({}) },
+      queries: { "available-books@1": () => Result.ok({ isbns: [] }), "flaky@1": () => Result.ok({}) },
+      readiness: [
+        {
+          name: "postgres",
+          check: async () => (readiness.up ? Result.ok(undefined) : Result.err(new DependencyUnavailable({ dependency: "postgres", message: "postgres: connection refused" }))),
+        },
+      ],
+    });
+    const h = httpHandler(app);
+    const ready = async () => {
+      const response = await h(new Request("http://library.test/health/ready"));
+      return { status: response.status, body: (await response.json()) as unknown };
+    };
+
+    const whenUp = await ready();
+    readiness.up = false;
+    const whenDown = await ready();
+    readiness.up = true;
+    await app.drain();
+    const whenDraining = await ready();
+
+    expect(whenUp).toEqual({ status: 200, body: { status: "ready", checks: [{ name: "postgres", status: "up" }] } });
+    expect(whenDown).toEqual({
+      status: 503,
+      body: { status: "unready", checks: [{ name: "postgres", status: "down", message: "postgres: connection refused" }] },
+    });
+    expect(whenDraining).toMatchObject({ status: 503, body: { status: "draining" } });
   });
 });
 
@@ -241,6 +277,8 @@ describe("openApiDocument", () => {
       "/commands",
       "/queries",
       "/health",
+      "/health/live",
+      "/health/ready",
     ]);
     expect((document.paths["/commands/borrow-book/version/1"] as { post: { operationId: string } }).post.operationId).toBe(
       "borrowBookV1",

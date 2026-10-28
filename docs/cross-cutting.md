@@ -85,6 +85,9 @@ createApplication(contracts, { idempotency: { store: postgresIdempotencyStore(sq
 
 ## Tracing
 
+The same `Telemetry` also records metrics — operation counts, events handled, request durations
+and event handler lag — listed in [running a service](operations.md#metrics).
+
 `createApplication({ telemetry: openTelemetry() })` records:
 
 | Span | Kind | From |

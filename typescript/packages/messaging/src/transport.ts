@@ -1,4 +1,4 @@
-import { Result, type DependencyUnavailable } from "@projected/application";
+import { Result, type DependencyUnavailable, type ReadinessCheck } from "@projected/application";
 
 /**
  * The transport SPI: the smallest surface a broker adapter (Kafka, SQS, NATS, RabbitMQ, ...) must
@@ -41,8 +41,18 @@ export interface MessageTransport {
     handler: (message: Message) => Promise<Disposition>,
     options?: SubscribeOptions,
   ): Promise<Subscription>;
+  /**
+   * Whether the broker answers now — for readiness probes ({@link transportReadiness}). Must
+   * answer promptly, unavailable rather than hanging when the broker is unreachable.
+   */
+  ping(): Promise<Result<void, DependencyUnavailable>>;
   /** Release connections. */
   close?(): Promise<void>;
+}
+
+/** A transport as a readiness check: the service is not ready while its broker is unreachable. */
+export function transportReadiness(name: string, transport: MessageTransport): ReadinessCheck {
+  return { name, check: () => transport.ping() };
 }
 
 export interface SubscribeOptions {
@@ -103,6 +113,7 @@ export function inMemoryTransport(options: InMemoryTransportOptions = {}): InMem
   const transport: InMemoryTransport = {
     published,
     deadLetters,
+    ping: async () => Result.ok(undefined),
     publish: async (topic, outgoing) => {
       const message: Message = {
         id: outgoing.id,

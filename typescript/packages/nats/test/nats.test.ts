@@ -29,6 +29,17 @@ afterAll(async () => {
   await Promise.all(transports.map((transport) => transport.close()));
 });
 
+describe("nats without a server", () => {
+  it("answers a readiness ping with unavailable, within its timeout", async () => {
+    const transport = natsTransport({ servers: "nats://127.0.0.1:1", pingTimeoutMs: 500 });
+    transports.push(transport);
+
+    const pinged = await transport.ping();
+
+    expect(pinged.isErr() && pinged.error).toMatchObject({ _tag: "DependencyUnavailable", dependency: "nats" });
+  }, 5_000);
+});
+
 const suite = servers === undefined ? describe.skip : describe;
 
 suite("nats", () => {

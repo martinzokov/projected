@@ -1152,6 +1152,138 @@
           }
         }
       }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "healthLive",
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness",
+        "responses": {
+          "200": {
+            "description": "The service is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "healthReady",
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness",
+        "description": "Whether the service should be sent traffic: every readiness check passes, and it is not shutting down.",
+        "responses": {
+          "200": {
+            "description": "Ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ready",
+                        "unready",
+                        "draining"
+                      ]
+                    },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "status"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "up",
+                              "down"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency is down, or the service is draining.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ready",
+                        "unready",
+                        "draining"
+                      ]
+                    },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "status"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "up",
+                              "down"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

@@ -1,7 +1,8 @@
 /**
- * Tracing, as a port. The application layer creates spans and moves trace context through
- * messages without knowing which tracing system is underneath: `@projected/opentelemetry`
- * implements this for OpenTelemetry, and {@link noTelemetry} is the default.
+ * Tracing and metrics, as a port. The application layer creates spans, moves trace context
+ * through messages and records measurements without knowing which system is underneath:
+ * `@projected/opentelemetry` implements this for OpenTelemetry, and {@link noTelemetry} is the
+ * default.
  */
 
 export type SpanKind = "internal" | "server" | "client" | "producer" | "consumer";
@@ -27,6 +28,12 @@ export interface Telemetry {
   inject(carrier: Record<string, string>): void;
   /** Run `work` as a continuation of the trace whose context is in `carrier`. */
   continueFrom<T>(carrier: Readonly<Record<string, string>> | undefined, work: () => Promise<T>): Promise<T>;
+  /** Add `value` to the counter `name` — things that happened: operations run, events handled. */
+  count(name: string, value: number, attributes?: Attributes): void;
+  /** Record one measurement into the distribution `name` — durations, sizes. */
+  record(name: string, value: number, attributes?: Attributes): void;
+  /** Set the gauge `name` to its current value — how far behind an event handler is. */
+  gauge(name: string, value: number, attributes?: Attributes): void;
 }
 
 const noSpan: Span = { setAttributes: () => undefined, fail: () => undefined };
@@ -36,6 +43,9 @@ export const noTelemetry: Telemetry = {
   span: (_name, _options, work) => work(noSpan),
   inject: () => undefined,
   continueFrom: (_carrier, work) => work(),
+  count: () => undefined,
+  record: () => undefined,
+  gauge: () => undefined,
 };
 
 /** The current trace context as a carrier, or `undefined` when there is none. */

@@ -21,7 +21,7 @@ import {
   principal,
   sequentialIds,
 } from "@projected/testing/event-sourced";
-import { fromPool, migrate, postgresStores, type SqlClient } from "@projected/store-postgres/event-sourced";
+import { fromPool, migrate, postgresReadiness, postgresStores, type SqlClient } from "@projected/store-postgres/event-sourced";
 import * as stateBased from "@projected/store-postgres/state-based";
 import { stateStoreConformance } from "@projected/testing/state-based";
 
@@ -61,7 +61,24 @@ afterAll(async () => {
 
 const suite = pool === undefined ? describe.skip : describe;
 
+describe("postgres without a database", () => {
+  it("is not ready, and says so within its timeout", async () => {
+    const unreachable = new pg.Pool({ connectionString: "postgres://nobody@127.0.0.1:1/none", connectionTimeoutMillis: 5_000 });
+
+    const checked = await postgresReadiness(fromPool(unreachable), { timeoutMs: 500 }).check();
+    await unreachable.end();
+
+    expect(checked.isErr() && checked.error).toMatchObject({ _tag: "DependencyUnavailable", dependency: "postgres" });
+  }, 5_000);
+});
+
 suite("postgres", () => {
+  it("is ready while the database answers", async () => {
+    const checked = await postgresReadiness(fromPool(pool!)).check();
+
+    expect(checked.isOk()).toBe(true);
+  });
+
   eventStoreConformance("postgres", async () => (await stores()).eventStore);
   stateStoreConformance("postgres", async () => (await stateBasedStores()).stateStore);
   checkpointStoreConformance("postgres", async () => (await stores()).checkpoints);

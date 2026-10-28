@@ -56,7 +56,9 @@ const KIND: Record<string, OperationKind> = { commands: "command", queries: "que
  * - `POST /queries/{type}/version/{version}` — run one query
  * - `POST /commands`, `POST /queries` — run a batch: `{ "commands": [{ type, version, data }] }`
  * - `GET /openapi.json` — the OpenAPI 3.1 document
- * - `GET /health` — liveness
+ * - `GET /health/live` (and `GET /health`) — liveness: the process answers
+ * - `GET /health/ready` — readiness: the application's {@link Application.health} report, 503
+ *   while a dependency is down or the service is draining
  */
 export function httpHandler<C extends AnyContracts>(app: Application<C>, options: HttpHandlerOptions = {}): FetchHandler {
   const basePath = (options.basePath ?? "").replace(/\/+$/, "");
@@ -191,8 +193,17 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
     }
     const path = url.pathname.slice(basePath.length) || "/";
 
-    if (path === "/health") {
+    if (path === "/health" || path === "/health/live") {
       return request.method === "GET" ? json({ status: "ok" }, 200) : methodNotAllowed("GET");
+    }
+    if (path === "/health/ready") {
+      if (request.method !== "GET") return methodNotAllowed("GET");
+      const report = await app.health();
+      // Not a problem document: probes and operators read the report either way.
+      return new Response(JSON.stringify(report), {
+        status: report.status === "ready" ? 200 : 503,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+      });
     }
     if (path === "/openapi.json" && document !== undefined) {
       return request.method === "GET" ? json(document, 200) : methodNotAllowed("GET");
@@ -210,9 +221,16 @@ export function httpHandler<C extends AnyContracts>(app: Application<C>, options
         `POST ${route}`,
         { kind: "server", attributes: { "http.request.method": "POST", "http.route": route, "url.path": url.pathname } },
         async (span) => {
+          const started = performance.now();
           const response = await handleOperation(request, single, batch);
           span.setAttributes({ "http.response.status_code": response.status });
           if (response.status >= 500) span.fail(`HTTP ${response.status}`);
+          // OpenTelemetry's semantic convention: seconds, by method, route and status.
+          telemetry.record("http.server.request.duration", (performance.now() - started) / 1000, {
+            "http.request.method": "POST",
+            "http.route": route,
+            "http.response.status_code": response.status,
+          });
           return response;
         },
       ),

@@ -17,3 +17,4 @@
 export { fromPool, schemaOf, type PostgresOptions, type SqlClient } from "./sql.js";
 export { runMigrations, type Migration, type MigrationReport, type MigrationTracks } from "./migrate.js";
 export { postgresCheckpointStore, postgresDocumentStore, postgresIdempotencyStore } from "./stores.js";
+export { postgresReadiness, type PostgresReadinessOptions } from "./readiness.js";

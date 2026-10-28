@@ -45,6 +45,14 @@ export function messageTransportConformance(name: string, options: TransportConf
     };
 
   describe(`MessageTransport conformance: ${name}`, () => {
+    it("answers a readiness ping while the broker is reachable", async () => {
+      const under = await options.create();
+
+      const pinged = await under.transport.ping();
+
+      expect(pinged.isOk() ? "ok" : pinged.error.message).toBe("ok");
+    }, testTimeout);
+
     it("delivers a published message with its id, key, body and headers", async () => {
       const under = await options.create();
       const topic = freshTopic();
