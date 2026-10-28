@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { checkArchitecture, type Violation } from "@projected/architecture";
 
 /**
@@ -12,6 +12,10 @@ import { checkArchitecture, type Violation } from "@projected/architecture";
  * clean fixture app and watching the check go red: a passing architecture check is worthless
  * until it has been seen to fail.
  */
+
+// Every test runs dependency-cruiser and ESLint — some rules type-checked — on a real fixture:
+// seconds each, and more when the machine is busy with other suites.
+vi.setConfig({ testTimeout: 60_000 });
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packages = join(here, "..", "..");
