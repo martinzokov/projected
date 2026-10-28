@@ -102,7 +102,7 @@ tests from the first command. Inside the workspace it depends on the workspace's
 cd typescript
 pnpm projected new service examples/billing --flavour state-based --aggregate invoice
 pnpm install && pnpm build
-cd examples/billing && pnpm openapi && pnpm lock && pnpm docs && pnpm check
+cd examples/billing && pnpm openapi && pnpm lock && pnpm catalog && pnpm check
 pnpm exec projected new command issue-invoice --aggregate invoice --event InvoiceIssued
 ```
 

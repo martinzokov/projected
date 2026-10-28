@@ -58,7 +58,8 @@ export function serviceFiles(service: ServiceTemplate): Record<string, string> {
         check: "tsc -b && vitest run && projected check",
         openapi: "projected openapi",
         lock: "projected contracts --update",
-        docs: "projected docs",
+        // Not "docs": `pnpm docs` is pnpm's own command, and would never reach the script.
+        catalog: "projected docs",
         mutate: "projected mutate",
       },
       dependencies: dependencies(FRAMEWORK, ["@opentelemetry/api", "better-auth", "pg"]),

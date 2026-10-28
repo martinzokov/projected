@@ -77,6 +77,16 @@ describe("a new service", () => {
     for (const [name, version] of Object.entries(DEPENDENCY_VERSIONS)) expect([name, version]).toEqual([name, tested[name]]);
   });
 
+  it("names no script after a command of pnpm's own, which would shadow it", () => {
+    // `pnpm <name>` runs pnpm's command of that name, if it has one, before any script.
+    const pnpmCommands = ["add", "audit", "bin", "config", "dedupe", "deploy", "docs", "dlx", "env", "exec", "fetch", "help", "import", "init", "install", "licenses", "link", "list", "ls", "outdated", "pack", "patch", "prune", "publish", "rebuild", "remove", "root", "server", "setup", "store", "unlink", "update", "why"];
+    const root = service("state-based");
+
+    const scripts = Object.keys((JSON.parse(read(root, "package.json")) as { scripts: Record<string, string> }).scripts);
+
+    expect(scripts.filter((script) => pnpmCommands.includes(script))).toEqual([]);
+  });
+
   it("will not be created without a flavour, which is fixed from then on", () => {
     const parent = mkdtempSync(join(tmpdir(), "projected-new-"));
     try {
