@@ -100,8 +100,8 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
    ```
 5. **Test** it (`projected-testing` skill): a given/when/then test per decision rule, and an
    HTTP test for the endpoint.
-6. **Regenerate and lock**: `projected openapi` and `projected contracts --update`. Commit
-   `openapi.json` and `contracts.lock.json`.
+6. **Regenerate and lock**: `projected openapi`, `projected contracts --update` and
+   `projected docs`. Commit `openapi.json`, `contracts.lock.json` and `docs/catalog.md`.
 7. **Verify**: run the project's check (`pnpm check` / `projected check`) and the tests. Done
    only when both are green.
 
@@ -167,6 +167,7 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 | `projected check --strict` | the same, also failing on design-rule warnings |
 | `projected arch` | layout, layer tsconfigs, import boundaries, code rules |
 | `projected openapi` | regenerate `openapi.json` from the contracts |
+| `projected docs` | regenerate `docs/catalog.md`: operations, aggregates, events, handlers, ports and a Mermaid flow diagram — read it to learn a service before changing it |
 | `projected contracts --update` | lock new operations (refuses changes to published ones) |
 | `projected vendor add <name> --spec <url\|file>` | generate a typed, Result-returning client for a third-party OpenAPI |
 | `projected vendor update <name>` | take a vendor's new spec (refuses breaking changes unless accepted) |

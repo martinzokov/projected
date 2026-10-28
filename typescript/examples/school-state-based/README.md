@@ -19,6 +19,9 @@ contracts, same `openapi.json`, same responses.
 | `enlisted-students-on-joining-date` v1 | query | answered from a projection |
 | `student-profile` v1 | query | a missing student is `{ "student": null }`, with 200 |
 
+[`docs/catalog.md`](docs/catalog.md) is the service at a glance — operations, the aggregate, its
+events, the projection and a flow diagram — generated from the code by `projected docs`.
+
 ## Where things are
 
 ```

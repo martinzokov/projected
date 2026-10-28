@@ -116,6 +116,7 @@ worst possible outcome.
 | removing an operation is explicit | requires `--allow-removal` |
 | re-baselining is explicit and reviewed | `--rebaseline`, for toolchain upgrades that change generated JSON Schema but not the wire contract — the `openapi.json` diff must show no change to a published operation |
 | `openapi.json` matches the code | `projected openapi --check` |
+| `docs/catalog.md` describes the code as it is | `projected docs --check` — the catalog is derived from contracts and code, so it cannot drift |
 | every generated vendor client matches its pinned spec | `projected check` (`vendor`), regenerated with `projected vendor generate` |
 | a vendor's breaking spec changes are accepted explicitly | `projected vendor update` refuses them without `--accept-breaking` |
 | names are kebab-case (operations), PascalCase (events, errors), camelCase (aggregates) | checked when defined; the app fails at startup and in tests |

@@ -122,7 +122,7 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling |
 | `@projected/testing` | tests | given/when/then, fixed clock, sequential ids, test authenticator and telemetry, conformance suites for every store and transport |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |
-| `@projected/cli` | tooling | `projected check`, `arch`, `openapi`, `contracts`, `vendor` (typed clients for third-party OpenAPI specs) |
+| `@projected/cli` | tooling | `projected check`, `arch`, `openapi`, `contracts`, `docs` (a service catalog with Mermaid diagrams, derived from the code), `vendor` (typed clients for third-party OpenAPI specs) |
 
 ## Skills for agents
 

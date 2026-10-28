@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
+import { docs } from "./docs/commands.js";
 import { loadProject } from "./project.js";
 import { vendorAdd, vendorCheck, vendorGenerate, vendorUpdate } from "./vendor/commands.js";
 
@@ -17,6 +18,8 @@ Commands:
   contracts --rebaseline
                         accept current fingerprints after a toolchain upgrade (review
                         the openapi.json diff first: it must show no contract change)
+  docs [--check]        write docs/catalog.md — operations, aggregates, events, handlers,
+                        ports and a Mermaid flow diagram, all derived from the code
   vendor add <name> --spec <url|file>
                         pin a third-party OpenAPI spec and generate a Result-returning
                         client for it (plus a starter port and adapter)
@@ -28,7 +31,7 @@ Commands:
 
 Configuration: projected.json in the project root. "flavour" ("event-sourced" or
 "state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages,
-securitySchemes, vendors and rules (design rule levels) are optional.`;
+securitySchemes, vendors, rules (design rule levels) and docs (catalog path) are optional.`;
 
 /** Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error. */
 export async function run(argv: readonly string[], print: (line: string) => void): Promise<number> {
@@ -76,7 +79,11 @@ export async function run(argv: readonly string[], print: (line: string) => void
         () => contractsLock(project, { update: false, allowRemoval: false }),
         () => openapi(project, { check: true }),
         async () => vendorCheck(project),
+        () => docs(project, { check: true }),
       );
+      break;
+    case "docs":
+      steps.push(() => docs(project, { check: values.check }));
       break;
     case "arch":
       steps.push(() => architecture(project, { strict: values.strict }));

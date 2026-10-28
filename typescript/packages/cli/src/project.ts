@@ -38,6 +38,8 @@ export interface ProjectConfig {
   readonly vendors?: Readonly<Record<string, VendorConfig>>;
   /** Levels (`"error"`, `"warn"`, `"off"`) for the configurable design rules. */
   readonly rules?: DesignRules;
+  /** The generated service catalog. Defaults to `docs/catalog.md`. */
+  readonly docs?: string;
 }
 
 export interface Project {

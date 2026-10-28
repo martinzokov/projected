@@ -15,3 +15,6 @@ export { vendorAdd, vendorCheck, vendorGenerate, vendorUpdate } from "./vendor/c
 export { compareSpecs, type SpecChange } from "./vendor/diff.js";
 export { generateClient, vendorPaths } from "./vendor/generate.js";
 export { canonicalSpec, parseSpec, specHash, type OpenApiDocument } from "./vendor/spec.js";
+export { docs } from "./docs/commands.js";
+export { analyze, type CodeModel } from "./docs/analyze.js";
+export { renderCatalog } from "./docs/render.js";
