@@ -78,7 +78,7 @@ another service through a typed client, or through Kafka or NATS.
 | [`spec/`](spec) | the language-neutral protocol ([`protocol.md`](spec/protocol.md)) and wire schemas |
 | [`typescript/`](typescript) | the TypeScript implementation: packages and the school example in [each](typescript/examples/school-event-sourced) [flavour](typescript/examples/school-state-based) |
 | [`skills/`](skills) | AI agent skills for building with projected |
-| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [roadmap](docs/roadmap.md) |
+| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [third-party APIs](docs/vendors.md), [roadmap](docs/roadmap.md) |
 | [`vendor/anti-slop/`](vendor/anti-slop) | vendored copy of anti-slop's skills and configs ([`UPSTREAM.md`](vendor/anti-slop/UPSTREAM.md)) |
 | [`.claude/skills/`](.claude/skills) | links making all skills available to agents working in this repo |
 
@@ -122,7 +122,7 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling |
 | `@projected/testing` | tests | given/when/then, fixed clock, sequential ids, test authenticator and telemetry, conformance suites for every store and transport |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |
-| `@projected/cli` | tooling | `projected check`, `arch`, `openapi`, `contracts` |
+| `@projected/cli` | tooling | `projected check`, `arch`, `openapi`, `contracts`, `vendor` (typed clients for third-party OpenAPI specs) |
 
 ## Skills for agents
 

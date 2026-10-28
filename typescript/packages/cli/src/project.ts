@@ -5,6 +5,14 @@ import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tsImport } from "tsx/esm/api";
 
+/** A third-party API added with `projected vendor add`. */
+export interface VendorConfig {
+  /** The pinned OpenAPI spec the client is generated from, relative to the project root. */
+  readonly spec: string;
+  /** Where `projected vendor update` fetches a new version from: a URL, or a file relative to the root. */
+  readonly source?: string;
+}
+
 /** `projected.json` at the project root. Every field but `flavour` is optional. */
 export interface ProjectConfig {
   /**
@@ -26,6 +34,8 @@ export interface ProjectConfig {
   readonly domainPackages?: readonly string[];
   /** OpenAPI security schemes for the generated document, e.g. better-auth's cookie and bearer. */
   readonly securitySchemes?: Readonly<Record<string, unknown>>;
+  /** Third-party APIs with generated clients, managed by `projected vendor`. */
+  readonly vendors?: Readonly<Record<string, VendorConfig>>;
 }
 
 export interface Project {

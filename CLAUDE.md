@@ -67,7 +67,7 @@ pnpm test:integration         # sets PROJECTED_TEST_DATABASE_URL, _KAFKA_BROKERS
   handler, an undeclared error, a missing evolve handler, an incomplete state). Keep them when
   refactoring types.
 - **Generated artifacts are regenerated, never hand-edited:** `projected openapi`,
-  `projected contracts --update` in the examples.
+  `projected contracts --update` in the examples, `projected vendor generate` for vendor clients.
 
 ## Style
 

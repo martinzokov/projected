@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
 import { loadProject } from "./project.js";
+import { vendorAdd, vendorCheck, vendorGenerate, vendorUpdate } from "./vendor/commands.js";
 
 const USAGE = `projected — keep a projected app honest
 
@@ -15,10 +16,18 @@ Commands:
   contracts --rebaseline
                         accept current fingerprints after a toolchain upgrade (review
                         the openapi.json diff first: it must show no contract change)
+  vendor add <name> --spec <url|file>
+                        pin a third-party OpenAPI spec and generate a Result-returning
+                        client for it (plus a starter port and adapter)
+  vendor update <name> [--spec <url|file>] [--accept-breaking]
+                        take a new version of the spec; refuses breaking changes unless
+                        accepted
+  vendor generate [<name>]
+                        regenerate clients from the pinned specs
 
 Configuration: projected.json in the project root. "flavour" ("event-sourced" or
-"state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages
-and securitySchemes are optional.`;
+"state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages,
+securitySchemes and vendors are optional.`;
 
 /** Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error. */
 export async function run(argv: readonly string[], print: (line: string) => void): Promise<number> {
@@ -33,6 +42,8 @@ export async function run(argv: readonly string[], print: (line: string) => void
         update: { type: "boolean", default: false },
         "allow-removal": { type: "boolean", default: false },
         rebaseline: { type: "boolean", default: false },
+        spec: { type: "string" },
+        "accept-breaking": { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -42,7 +53,7 @@ export async function run(argv: readonly string[], print: (line: string) => void
     return 2;
   }
   const { values, positionals } = parsed;
-  const [command] = positionals;
+  const [command, subcommand, target] = positionals;
   if (values.help || command === undefined) {
     print(USAGE);
     return command === undefined && !values.help ? 2 : 0;
@@ -62,6 +73,7 @@ export async function run(argv: readonly string[], print: (line: string) => void
         () => architecture(project),
         () => contractsLock(project, { update: false, allowRemoval: false }),
         () => openapi(project, { check: true }),
+        async () => vendorCheck(project),
       );
       break;
     case "arch":
@@ -74,6 +86,17 @@ export async function run(argv: readonly string[], print: (line: string) => void
       steps.push(() =>
         contractsLock(project, { update: values.update, allowRemoval: values["allow-removal"], rebaseline: values.rebaseline }),
       );
+      break;
+    case "vendor":
+      if (subcommand === "add") steps.push(() => vendorAdd(project, target, values.spec));
+      else if (subcommand === "update") {
+        steps.push(() => vendorUpdate(project, target, { ...(values.spec === undefined ? {} : { source: values.spec }), acceptBreaking: values["accept-breaking"] }));
+      } else if (subcommand === "generate") steps.push(async () => vendorGenerate(project, target));
+      else {
+        print(`Unknown vendor command: ${subcommand ?? "(none)"}`);
+        print(USAGE);
+        return 2;
+      }
       break;
     default:
       print(`Unknown command: ${command}`);

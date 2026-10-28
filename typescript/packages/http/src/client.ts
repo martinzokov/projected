@@ -139,7 +139,10 @@ export class HttpStatusError extends TaggedError("HttpStatusError")<{
   message: string;
 }> {}
 
-export interface HttpRequest<S extends z.ZodType> {
+/** Statuses a request asks to receive as {@link HttpStatusError}, or `undefined` for none. */
+export type ExpectedStatuses = readonly number[] | undefined;
+
+export interface HttpRequest<S extends z.ZodType, X extends ExpectedStatuses = ExpectedStatuses> {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Path relative to the client's base URL. */
   readonly path: string;
@@ -150,8 +153,18 @@ export interface HttpRequest<S extends z.ZodType> {
   /** Schema the success body must match. Mismatches are a {@link DependencyFailure}. */
   readonly response: S;
   /** Statuses returned as {@link HttpStatusError} instead of a failure — e.g. `[404]` to model "not found". */
-  readonly expectedErrors?: readonly number[];
+  readonly expectedErrors?: X | undefined;
 }
+
+/**
+ * What a request can fail with. {@link HttpStatusError} is only possible — and only in the type —
+ * when the request lists `expectedErrors`, so a plain call composes as
+ * `Result<T, DependencyUnavailable | DependencyFailure>` with nothing to map away.
+ */
+export type HttpRequestError<X extends ExpectedStatuses> =
+  | (X extends readonly number[] ? HttpStatusError : never)
+  | DependencyUnavailable
+  | DependencyFailure;
 
 export interface HttpResponse<T> {
   readonly status: number;
@@ -161,9 +174,9 @@ export interface HttpResponse<T> {
 
 /** Result-based HTTP client for driven adapters that wrap third-party APIs. */
 export interface HttpClient {
-  request<S extends z.ZodType>(
-    request: HttpRequest<S>,
-  ): Promise<Result<HttpResponse<z.output<S>>, HttpStatusError | DependencyUnavailable | DependencyFailure>>;
+  request<S extends z.ZodType, const X extends ExpectedStatuses = undefined>(
+    request: HttpRequest<S, X>,
+  ): Promise<Result<HttpResponse<z.output<S>>, HttpRequestError<X>>>;
 }
 
 export interface HttpClientOptions {
@@ -195,7 +208,8 @@ export function httpClient(options: HttpClientOptions): HttpClient {
   const timeoutMs = options.timeoutMs ?? 10_000;
   const { dependency } = options;
 
-  const traced: HttpClient["request"] = (request) => {
+  type AnyFailure = HttpStatusError | DependencyUnavailable | DependencyFailure;
+  const traced = <S extends z.ZodType>(request: HttpRequest<S>): Promise<Result<HttpResponse<z.output<S>>, AnyFailure>> => {
     const telemetry = options.telemetry;
     if (telemetry === undefined) return send(request, {});
     return telemetry.span(
@@ -273,5 +287,7 @@ export function httpClient(options: HttpClientOptions): HttpClient {
     }
   };
 
-  return { request: traced };
+  // `send` only produces HttpStatusError for statuses in `expectedErrors`, which is what
+  // HttpRequestError<X> says; the compiler cannot follow that through the runtime check.
+  return { request: traced as HttpClient["request"] };
 }

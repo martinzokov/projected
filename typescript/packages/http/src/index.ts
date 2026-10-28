@@ -11,9 +11,11 @@ export {
   HttpStatusError,
   httpClient,
   httpService,
+  type ExpectedStatuses,
   type HttpClient,
   type HttpClientOptions,
   type HttpRequest,
+  type HttpRequestError,
   type HttpResponse,
   type HttpServiceOptions,
 } from "./client.js";

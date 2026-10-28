@@ -149,7 +149,29 @@ sender's principal travels with each command; pass `principal: servicePrincipal`
 
 ## A third-party HTTP API
 
-Wrap it in a driven adapter so the application never sees HTTP:
+When the vendor publishes an OpenAPI spec, let `projected vendor` write the client — never write
+request/response types for it by hand:
+
+```sh
+projected vendor add weather --spec https://api.weather.example/openapi.yaml
+```
+
+It pins the spec (`vendor/weather.openapi.json`), generates zod schemas and a Result-returning
+client (`adapter/driven/weather/weather-client.ts`, never edited by hand), and starts a port and
+an adapter for you to fill in. You write the port in the application's words and the mapping in
+the adapter; `vendor update` refuses breaking spec changes until you accept them. The whole
+workflow is in `docs/vendors.md`.
+
+```ts
+export const weatherAdapter = (client: WeatherClient): Weather => ({
+  forecastFor: async ({ lat, lon }) =>
+    (await client.getForecast({ latitude: lat, longitude: lon })).map(({ body }) =>
+      body.daily.map((day) => ({ date: day.date, maxTempC: day.maxTempC })),
+    ),
+});
+```
+
+Without a spec, wrap the API by hand in a driven adapter so the application never sees HTTP:
 
 ```ts
 // src/infrastructure/adapter/driven/payments/stripe-payment-gateway.ts
@@ -164,7 +186,9 @@ export const stripePaymentGateway = (http: HttpClient): PaymentGateway => ({
 
 `httpClient` turns network errors, timeouts and 5xx into `DependencyUnavailable`, unexpected
 bodies into `DependencyFailure`, and statuses you list in `expectedErrors` into
-`HttpStatusError` so the adapter can translate them into business outcomes.
+`HttpStatusError` so the adapter can translate them into business outcomes. `HttpStatusError`
+is only in the type when you list `expectedErrors`, so a plain call maps straight into a port's
+`DependencyUnavailable | DependencyFailure`.
 
 ## Results at the boundary
 

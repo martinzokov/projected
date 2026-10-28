@@ -1,5 +1,5 @@
 import { Validator } from "@seriousme/openapi-schema-validator";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 type Spec = Parameters<Validator["validate"]>[0];
 import {
@@ -14,6 +14,7 @@ import {
   z,
   type Application,
   type CommandHandler,
+  type InferErr,
   type QueryHandler,
 } from "@projected/application";
 import { HttpStatusError, httpClient, httpHandler, httpService, openApiDocument, type FetchHandler } from "@projected/http";
@@ -376,5 +377,16 @@ describe("httpClient", () => {
 
     expect(unavailable.isErr() && DependencyUnavailable.is(unavailable.error)).toBe(true);
     expect(failure.isErr() && DependencyFailure.is(failure.error)).toBe(true);
+  });
+
+  it("types HttpStatusError only for requests that expect statuses", async () => {
+    const client = httpClient({ dependency: "weather", baseUrl: "https://weather.test", fetch: respond(200, { celsius: 21 }) });
+
+    const plain = await client.request({ method: "GET", path: "/today", response: Weather });
+    const expecting = await client.request({ method: "GET", path: "/today", response: Weather, expectedErrors: [404] });
+
+    expect([plain.isOk(), expecting.isOk()]).toEqual([true, true]);
+    expectTypeOf<InferErr<typeof plain>>().toEqualTypeOf<DependencyUnavailable | DependencyFailure>();
+    expectTypeOf<InferErr<typeof expecting>>().toEqualTypeOf<HttpStatusError | DependencyUnavailable | DependencyFailure>();
   });
 });

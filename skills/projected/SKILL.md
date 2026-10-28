@@ -141,6 +141,8 @@ user just *decide* to do?" — that is the command.
 | `await` in the domain | do async work in the handler and pass results into the decision |
 | return an error the contract does not list | add it to the contract's `errors` (a new version if published), or map it |
 | call another service | depend on its contracts through `RemoteService` (`projected-integrations` skill) |
+| call a third-party API | `projected vendor add` for its OpenAPI spec, then a port and adapter (`projected-integrations`) |
+| hand-write a vendor's request/response types | don't: generate them with `projected vendor` |
 | restrict who may call an operation | set `access` on the contract (`"public"`, `"authenticated"`, `{ permissions }`) |
 | know who is calling | read `context.metadata.principal` in the handler; never parse tokens or cookies |
 | stop a retried command running twice | nothing: the dispatcher handles `Idempotency-Key` and message ids; make the decision idempotent too |
@@ -160,6 +162,8 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 | `projected arch` | layout, layer tsconfigs, import boundaries, code rules |
 | `projected openapi` | regenerate `openapi.json` from the contracts |
 | `projected contracts --update` | lock new operations (refuses changes to published ones) |
+| `projected vendor add <name> --spec <url\|file>` | generate a typed, Result-returning client for a third-party OpenAPI |
+| `projected vendor update <name>` | take a vendor's new spec (refuses breaking changes unless accepted) |
 | `tsc -b` | compile every layer; boundary violations are compile errors |
 
 Related skills: `projected-domain-modelling`, `projected-contracts`, `projected-integrations`,

@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info: { title: Weather, version: "1.0" }
+servers:
+  - url: https://api.weather.test
+paths:
+  /v1/forecast:
+    get:
+      operationId: getForecast
+      parameters:
+        - { name: latitude, in: query, required: true, schema: { type: number } }
+        - { name: longitude, in: query, required: true, schema: { type: number } }
+        - { name: daily, in: query, schema: { type: array, items: { type: string } } }
+        - { name: units, in: query, schema: { type: string, enum: [metric, imperial] } }
+        - { name: days, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Forecast" }
+  /v1/locations/{locationId}:
+    parameters:
+      - { name: locationId, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: get-location
+      responses:
+        "200":
+          description: ok
+          content: { application/json: { schema: { $ref: "#/components/schemas/Location" } } }
+        "404": { description: no such location }
+  /v1/alerts:
+    post:
+      operationId: createAlert
+      parameters:
+        - { name: X-Api-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AlertRequest" } } }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { type: object, required: [alertId], properties: { alertId: { type: string } } }
+  /v1/alerts/{alertId}:
+    delete:
+      parameters:
+        - { name: alertId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: gone }
+  /v1/stations:
+    get:
+      operationId: listStations
+      responses:
+        "200":
+          description: ok
+          content: { application/json: { schema: { type: array, items: { type: string } } } }
+components:
+  schemas:
+    Forecast:
+      type: object
+      required: [latitude, longitude, daily]
+      properties:
+        latitude: { type: number }
+        longitude: { type: number }
+        daily: { type: array, items: { $ref: "#/components/schemas/Day" } }
+        note: { type: [string, "null"] }
+    Day:
+      type: object
+      required: [date, maxTempC, conditions]
+      properties:
+        date: { type: string, format: date }
+        maxTempC: { type: number }
+        rainChance: { type: integer }
+        windKph: { type: number }
+        conditions: { type: string, enum: [sunny, cloudy, rain] }
+    Location:
+      allOf:
+        - $ref: "#/components/schemas/Place"
+        - type: object
+          properties: { timezone: { type: string } }
+    Place:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        parent: { $ref: "#/components/schemas/Place" }
+    AlertRequest:
+      type: object
+      required: [locationId, threshold]
+      properties:
+        locationId: { type: string }
+        threshold: { type: number }
+        channels: { type: array, items: { type: string, enum: [email, sms] } }
