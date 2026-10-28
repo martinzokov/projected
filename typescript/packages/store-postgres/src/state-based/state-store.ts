@@ -2,45 +2,14 @@ import {
   ConcurrencyConflict,
   Result,
   type DependencyUnavailable,
-  type EventMetadata,
   type RecordedEvent,
   type SaveResult,
   type StateStore,
   type StoredState,
 } from "@projected/application/state-based";
-import { attempt, schemaOf, type PostgresOptions, type SqlClient } from "../sql.js";
-
-interface EventRow {
-  global_position: string;
-  event_id: string;
-  stream: string;
-  stream_version: number;
-  type: string;
-  schema_version: number;
-  data: unknown;
-  metadata: EventMetadata;
-  recorded_at: Date;
-}
-
-interface StateRow {
-  version: number;
-  schema_version: number | null;
-  data: unknown;
-}
-
-const toRecorded = (row: EventRow): RecordedEvent => ({
-  eventId: row.event_id,
-  stream: row.stream,
-  streamVersion: row.stream_version,
-  globalPosition: Number(row.global_position),
-  type: row.type,
-  schemaVersion: row.schema_version,
-  data: row.data,
-  metadata: row.metadata,
-  recordedAt: row.recorded_at.toISOString(),
-});
-
-const COLUMNS = "global_position, event_id, stream, stream_version, type, schema_version, data, metadata, recorded_at";
+import { sql } from "kysely";
+import { COLUMNS, eventRow, toRecorded } from "../event-rows.js";
+import { advisoryLock, attempt, inSchema, schemaOf, type PostgresClient, type PostgresOptions } from "../sql.js";
 
 /** Raised inside the save transaction to roll it back; never escapes this module. */
 class Conflict extends Error {
@@ -66,15 +35,15 @@ class Conflict extends Error {
  * order. The lock is held only for the insert and commit; it bounds event-emitting saves to one
  * transaction at a time per schema, which is thousands per second for short transactions.
  */
-export function postgresStateStore(sql: SqlClient, options: PostgresOptions = {}): StateStore {
-  const s = schemaOf(options);
+export function postgresStateStore(client: PostgresClient, options: PostgresOptions = {}): StateStore {
+  const db = inSchema(client, options);
+  const schema = schemaOf(options);
   const dependency = "postgres state store";
 
   return {
     load: (key): Promise<Result<StoredState, DependencyUnavailable>> =>
       attempt(dependency, async () => {
-        const { rows } = await sql.query<StateRow>(`SELECT version, schema_version, data FROM ${s}.states WHERE key = $1`, [key]);
-        const row = rows[0];
+        const row = await db.selectFrom("states").select(["version", "schema_version", "data"]).where("key", "=", key).executeTakeFirst();
         if (row === undefined) return { version: 0, state: undefined };
         return {
           version: row.version,
@@ -84,56 +53,33 @@ export function postgresStateStore(sql: SqlClient, options: PostgresOptions = {}
 
     save: async (key, write, { expectedVersion }) => {
       const saved = await attempt(dependency, () =>
-        sql
-          .transaction(async (tx): Promise<SaveResult> => {
-            await tx.query(`INSERT INTO ${s}.states (key, version, event_count) VALUES ($1, 0, 0) ON CONFLICT (key) DO NOTHING`, [key]);
-            const { rows } = await tx.query<{ version: number; event_count: number }>(
-              `SELECT version, event_count FROM ${s}.states WHERE key = $1 FOR UPDATE`,
-              [key],
-            );
-            const actual = rows[0]?.version ?? 0;
-            const emitted = rows[0]?.event_count ?? 0;
+        db
+          .transaction()
+          .execute(async (tx): Promise<SaveResult> => {
+            await tx.insertInto("states").values({ key, version: 0, event_count: 0 }).onConflict((conflict) => conflict.column("key").doNothing()).execute();
+            const row = await tx.selectFrom("states").select(["version", "event_count"]).where("key", "=", key).forUpdate().executeTakeFirst();
+            const actual = row?.version ?? 0;
+            const emitted = row?.event_count ?? 0;
             if (expectedVersion !== "any" && expectedVersion !== actual) throw new Conflict(actual);
 
             let recorded: RecordedEvent[] = [];
             if (write.events.length > 0) {
-              await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`projected-outbox:${s}`]);
-              const inserted = await tx.query<EventRow>(
-                `INSERT INTO ${s}.outbox (event_id, stream, stream_version, type, schema_version, data, metadata)
-                 SELECT coalesce(e.value ->> 'event_id', gen_random_uuid()::text), $1, $2 + e.ordinality,
-                        e.value ->> 'type', (e.value ->> 'schema_version')::integer, e.value -> 'data', e.value -> 'metadata'
-                 FROM jsonb_array_elements($3::jsonb) WITH ORDINALITY AS e(value, ordinality)
-                 ORDER BY e.ordinality
-                 RETURNING ${COLUMNS}`,
-                [
-                  key,
-                  emitted,
-                  JSON.stringify(
-                    write.events.map((event) => ({
-                      event_id: event.eventId ?? null,
-                      type: event.type,
-                      schema_version: event.schemaVersion,
-                      data: event.data,
-                      metadata: event.metadata ?? {},
-                    })),
-                  ),
-                ],
-              );
-              recorded = inserted.rows.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion);
+              await advisoryLock(tx, "projected-outbox", schema);
+              const inserted = await tx.insertInto("outbox").values(write.events.map(eventRow(key, emitted))).returning(COLUMNS).execute();
+              recorded = inserted.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion);
             }
             const version = actual + 1;
-            await tx.query(
-              `UPDATE ${s}.states
-               SET version = $2, event_count = $3, schema_version = $4, data = $5::jsonb, updated_at = now()
-               WHERE key = $1`,
-              [
-                key,
+            await tx
+              .updateTable("states")
+              .set({
                 version,
-                emitted + write.events.length,
-                write.state?.schemaVersion ?? null,
-                write.state === null ? null : JSON.stringify(write.state.data),
-              ],
-            );
+                event_count: emitted + write.events.length,
+                schema_version: write.state?.schemaVersion ?? null,
+                data: write.state === null ? null : JSON.stringify(write.state.data),
+                updated_at: sql<Date>`now()`,
+              })
+              .where("key", "=", key)
+              .execute();
             return { version, events: recorded };
           })
           .catch((error: unknown) => (error instanceof Conflict ? error : Promise.reject(error))),
@@ -155,10 +101,7 @@ export function postgresStateStore(sql: SqlClient, options: PostgresOptions = {}
 
     readAll: ({ after, limit }): Promise<Result<readonly RecordedEvent[], DependencyUnavailable>> =>
       attempt(dependency, async () => {
-        const { rows } = await sql.query<EventRow>(
-          `SELECT ${COLUMNS} FROM ${s}.outbox WHERE global_position > $1 ORDER BY global_position LIMIT $2`,
-          [after, limit],
-        );
+        const rows = await db.selectFrom("outbox").select(COLUMNS).where("global_position", ">", String(after)).orderBy("global_position").limit(limit).execute();
         return rows.map(toRecorded);
       }),
   };

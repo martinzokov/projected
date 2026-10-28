@@ -7,28 +7,32 @@ import {
   type DocumentStore,
   type IdempotencyClaim,
   type IdempotencyStore,
-  type OperationResult,
   type z,
 } from "@projected/application";
-import { attempt, schemaOf, type PostgresOptions, type SqlClient } from "./sql.js";
+import { sql } from "kysely";
+import { attempt, inSchema, type PostgresClient, type PostgresOptions } from "./sql.js";
+
+const now = sql<Date>`now()`;
+/** `now()` plus `ms` milliseconds, in the database's clock. */
+const inMs = (ms: number) => sql<Date>`now() + ${ms} * interval '1 millisecond'`;
 
 /** A {@link CheckpointStore} on PostgreSQL. */
-export function postgresCheckpointStore(sql: SqlClient, options: PostgresOptions = {}): CheckpointStore {
-  const s = schemaOf(options);
+export function postgresCheckpointStore(client: PostgresClient, options: PostgresOptions = {}): CheckpointStore {
+  const db = inSchema(client, options);
   const dependency = "postgres checkpoints";
   return {
     load: (name) =>
       attempt(dependency, async () => {
-        const { rows } = await sql.query<{ position: string }>(`SELECT position FROM ${s}.checkpoints WHERE name = $1`, [name]);
-        return rows[0] === undefined ? 0 : Number(rows[0].position);
+        const row = await db.selectFrom("checkpoints").select("position").where("name", "=", name).executeTakeFirst();
+        return row === undefined ? 0 : Number(row.position);
       }),
     save: (name, position) =>
       attempt(dependency, async () => {
-        await sql.query(
-          `INSERT INTO ${s}.checkpoints (name, position) VALUES ($1, $2)
-           ON CONFLICT (name) DO UPDATE SET position = EXCLUDED.position, updated_at = now()`,
-          [name, position],
-        );
+        await db
+          .insertInto("checkpoints")
+          .values({ name, position })
+          .onConflict((conflict) => conflict.column("name").doUpdateSet((eb) => ({ position: eb.ref("excluded.position"), updated_at: now })))
+          .execute();
       }),
   };
 }
@@ -38,30 +42,39 @@ export function postgresCheckpointStore(sql: SqlClient, options: PostgresOptions
  * requests with the same key — from any number of processes — get exactly one "claimed". Time
  * comes from the database, so application servers' clocks do not matter.
  */
-export function postgresIdempotencyStore(sql: SqlClient, options: PostgresOptions = {}): IdempotencyStore & {
+export function postgresIdempotencyStore(client: PostgresClient, options: PostgresOptions = {}): IdempotencyStore & {
   /** Delete expired keys. Expired keys are already ignored; this only reclaims space — run it on a schedule. */
   purgeExpired(): Promise<Result<number, DependencyUnavailable>>;
 } {
-  const s = schemaOf(options);
+  const db = inSchema(client, options);
   const dependency = "postgres idempotency";
 
   const claimOnce = async (key: string, fingerprint: string, lockMs: number, ttlMs: number): Promise<IdempotencyClaim | undefined> => {
-    const claimed = await sql.query(
-      `INSERT INTO ${s}.idempotency AS current (key, fingerprint, status, result, locked_until, expires_at)
-       VALUES ($1, $2, 'in-progress', NULL, now() + $3 * interval '1 millisecond', now() + $4 * interval '1 millisecond')
-       ON CONFLICT (key) DO UPDATE
-         SET fingerprint = EXCLUDED.fingerprint, status = 'in-progress', result = NULL,
-             locked_until = EXCLUDED.locked_until, expires_at = EXCLUDED.expires_at
-         WHERE current.expires_at <= now() OR (current.status = 'in-progress' AND current.locked_until <= now())
-       RETURNING key`,
-      [key, fingerprint, lockMs, ttlMs],
-    );
-    if (claimed.rows.length > 0) return { status: "claimed" };
-    const { rows } = await sql.query<{ fingerprint: string; status: "in-progress" | "completed"; result: OperationResult | null }>(
-      `SELECT fingerprint, status, result FROM ${s}.idempotency WHERE key = $1`,
-      [key],
-    );
-    const row = rows[0];
+    // Insert, or take over a key whose outcome expired or whose claim was abandoned.
+    const claimed = await db
+      .insertInto("idempotency")
+      .values({ key, fingerprint, status: "in-progress", result: null, locked_until: inMs(lockMs), expires_at: inMs(ttlMs) })
+      .onConflict((conflict) =>
+        conflict
+          .column("key")
+          .doUpdateSet((eb) => ({
+            fingerprint: eb.ref("excluded.fingerprint"),
+            status: "in-progress",
+            result: null,
+            locked_until: eb.ref("excluded.locked_until"),
+            expires_at: eb.ref("excluded.expires_at"),
+          }))
+          .where((eb) =>
+            eb.or([
+              eb("idempotency.expires_at", "<=", now),
+              eb.and([eb("idempotency.status", "=", "in-progress"), eb("idempotency.locked_until", "<=", now)]),
+            ]),
+          ),
+      )
+      .returning("key")
+      .executeTakeFirst();
+    if (claimed !== undefined) return { status: "claimed" };
+    const row = await db.selectFrom("idempotency").select(["fingerprint", "status", "result"]).where("key", "=", key).executeTakeFirst();
     // Released between the two statements: try again.
     if (row === undefined) return undefined;
     return row.status === "completed" && row.result !== null
@@ -79,16 +92,16 @@ export function postgresIdempotencyStore(sql: SqlClient, options: PostgresOption
       }),
     complete: (key, result) =>
       attempt(dependency, async () => {
-        await sql.query(`UPDATE ${s}.idempotency SET status = 'completed', result = $2 WHERE key = $1`, [key, JSON.stringify(result)]);
+        await db.updateTable("idempotency").set({ status: "completed", result: JSON.stringify(result) }).where("key", "=", key).execute();
       }),
     release: (key) =>
       attempt(dependency, async () => {
-        await sql.query(`DELETE FROM ${s}.idempotency WHERE key = $1 AND status = 'in-progress'`, [key]);
+        await db.deleteFrom("idempotency").where("key", "=", key).where("status", "=", "in-progress").execute();
       }),
     purgeExpired: () =>
       attempt(dependency, async () => {
-        const { rows } = await sql.query(`DELETE FROM ${s}.idempotency WHERE expires_at <= now() RETURNING key`);
-        return rows.length;
+        const deleted = await db.deleteFrom("idempotency").where("expires_at", "<=", now).executeTakeFirst();
+        return Number(deleted.numDeletedRows);
       }),
   };
 }
@@ -98,8 +111,8 @@ export function postgresIdempotencyStore(sql: SqlClient, options: PostgresOption
  * containment. Filters compare each field for exact equality; ordering follows JSONB's (numbers
  * numerically, strings by the database collation), ties broken by id.
  */
-export function postgresDocumentStore(sql: SqlClient, options: PostgresOptions = {}): DocumentStore {
-  const s = schemaOf(options);
+export function postgresDocumentStore(client: PostgresClient, options: PostgresOptions = {}): DocumentStore {
+  const db = inSchema(client, options);
 
   const collection = <S extends z.ZodType>(name: string, schema: S): DocumentCollection<z.output<S>> => {
     type Doc = z.output<S>;
@@ -121,54 +134,38 @@ export function postgresDocumentStore(sql: SqlClient, options: PostgresOptions =
       }
       return Result.ok(documents);
     };
+    const documents = db.selectFrom("documents").select(["id", "data"]).where("collection", "=", name);
 
     return {
       get: async (id) => {
-        const read = await attempt(dependency, () =>
-          sql.query<{ id: string; data: unknown }>(`SELECT id, data FROM ${s}.documents WHERE collection = $1 AND id = $2`, [name, id]),
-        );
+        const read = await attempt(dependency, () => documents.where("id", "=", id).executeTakeFirst());
         if (read.isErr()) return Result.err(read.error);
-        const row = read.value.rows[0];
-        return row === undefined ? Result.ok(undefined) : decode(id, row.data);
+        return read.value === undefined ? Result.ok(undefined) : decode(id, read.value.data);
       },
       put: (id, document) =>
         attempt(dependency, async () => {
-          await sql.query(
-            `INSERT INTO ${s}.documents (collection, id, data) VALUES ($1, $2, $3)
-             ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
-            [name, id, JSON.stringify(document)],
-          );
+          await db
+            .insertInto("documents")
+            .values({ collection: name, id, data: JSON.stringify(document) })
+            .onConflict((conflict) => conflict.columns(["collection", "id"]).doUpdateSet((eb) => ({ data: eb.ref("excluded.data"), updated_at: now })))
+            .execute();
         }),
       delete: (id) =>
         attempt(dependency, async () => {
-          await sql.query(`DELETE FROM ${s}.documents WHERE collection = $1 AND id = $2`, [name, id]);
+          await db.deleteFrom("documents").where("collection", "=", name).where("id", "=", id).execute();
         }),
       find: async (filter, findOptions = {}) => {
-        const params: unknown[] = [name, JSON.stringify(filter)];
-        const equalities = Object.entries(filter).map(([field, value]) => {
-          params.push(field, JSON.stringify(value));
-          return `data -> $${params.length - 1} = $${params.length}::jsonb`;
-        });
-        let order = `id COLLATE "C"`;
-        if (findOptions.orderBy !== undefined) {
-          params.push(findOptions.orderBy);
-          order = `data -> $${params.length}, ${order}`;
+        // Containment uses the GIN index; the equalities make it exact for nested values.
+        let query = documents.where(sql<boolean>`data @> ${JSON.stringify(filter)}::jsonb`);
+        for (const [field, value] of Object.entries(filter)) {
+          query = query.where(sql<boolean>`data -> ${field} = ${JSON.stringify(value)}::jsonb`);
         }
-        let limit = "";
-        if (findOptions.limit !== undefined) {
-          params.push(findOptions.limit);
-          limit = `LIMIT $${params.length}`;
-        }
-        const read = await attempt(dependency, () =>
-          sql.query<{ id: string; data: unknown }>(
-            `SELECT id, data FROM ${s}.documents
-             WHERE collection = $1 AND data @> $2::jsonb ${equalities.map((condition) => `AND ${condition}`).join(" ")}
-             ORDER BY ${order} ${limit}`,
-            params,
-          ),
-        );
+        if (findOptions.orderBy !== undefined) query = query.orderBy(sql`data -> ${findOptions.orderBy}`);
+        query = query.orderBy(sql`id COLLATE "C"`);
+        if (findOptions.limit !== undefined) query = query.limit(findOptions.limit);
+        const read = await attempt(dependency, () => query.execute());
         if (read.isErr()) return Result.err(read.error);
-        return decodeAll(read.value.rows);
+        return decodeAll(read.value);
       },
     };
   };

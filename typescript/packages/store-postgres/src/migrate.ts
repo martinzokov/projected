@@ -1,14 +1,20 @@
-import { schemaOf, type PostgresOptions, type SqlClient } from "./sql.js";
+import { sql, type Kysely } from "kysely";
+import { advisoryLock, schemaOf, type PostgresClient, type PostgresOptions } from "./sql.js";
 
-/** One schema change. Never edit a published entry: add a new one. */
+/**
+ * One schema change. Never edit a published entry: add a new one. `up` gets the database scoped
+ * to the project's schema — unqualified tables live there — and builds its change with Kysely's
+ * schema builder (`db.schema.createTable(...)`), or `sql` for what the builder cannot say.
+ */
 export interface Migration {
   readonly version: number;
-  readonly up: (schema: string) => string;
+  readonly up: (db: Kysely<unknown>) => Promise<void>;
 }
 
 /**
  * Independent, ordered lists of migrations, keyed by track. Each flavour's tables are their own
- * track next to the shared `core` one, so the two flavours can never collide on a version number.
+ * track next to the shared `core` one, so the two flavours can never collide on a version number;
+ * a service's own tables can be a track of their own.
  */
 export type MigrationTracks = Readonly<Record<string, readonly Migration[]>>;
 
@@ -19,34 +25,42 @@ export interface MigrationReport {
   readonly current: Readonly<Record<string, number>>;
 }
 
-/** Tables both flavours need: checkpoints, idempotency records and documents. */
+const now = sql`now()`;
+
+/**
+ * Tables both flavours need: checkpoints, idempotency records and documents. Constraint names are
+ * the ones Postgres gave this migration's original SQL, so every database has the same schema.
+ */
 export const CORE_MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
-    up: (s) => `
-      CREATE TABLE ${s}.checkpoints (
-        name text PRIMARY KEY,
-        position bigint NOT NULL,
-        updated_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE ${s}.idempotency (
-        key text PRIMARY KEY,
-        fingerprint text NOT NULL,
-        status text NOT NULL CHECK (status IN ('in-progress', 'completed')),
-        result jsonb,
-        locked_until timestamptz NOT NULL,
-        expires_at timestamptz NOT NULL
-      );
-      CREATE INDEX idempotency_expires_at ON ${s}.idempotency (expires_at);
-      CREATE TABLE ${s}.documents (
-        collection text NOT NULL,
-        id text NOT NULL,
-        data jsonb NOT NULL,
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        PRIMARY KEY (collection, id)
-      );
-      CREATE INDEX documents_data ON ${s}.documents USING gin (data jsonb_path_ops);
-    `,
+    up: async (db) => {
+      await db.schema
+        .createTable("checkpoints")
+        .addColumn("name", "text", (c) => c.primaryKey())
+        .addColumn("position", "bigint", (c) => c.notNull())
+        .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+        .execute();
+      await db.schema
+        .createTable("idempotency")
+        .addColumn("key", "text", (c) => c.primaryKey())
+        .addColumn("fingerprint", "text", (c) => c.notNull())
+        .addColumn("status", "text", (c) => c.notNull().check(sql`status IN ('in-progress', 'completed')`))
+        .addColumn("result", "jsonb")
+        .addColumn("locked_until", "timestamptz", (c) => c.notNull())
+        .addColumn("expires_at", "timestamptz", (c) => c.notNull())
+        .execute();
+      await db.schema.createIndex("idempotency_expires_at").on("idempotency").column("expires_at").execute();
+      await db.schema
+        .createTable("documents")
+        .addColumn("collection", "text", (c) => c.notNull())
+        .addColumn("id", "text", (c) => c.notNull())
+        .addColumn("data", "jsonb", (c) => c.notNull())
+        .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+        .addPrimaryKeyConstraint("documents_pkey", ["collection", "id"])
+        .execute();
+      await db.schema.createIndex("documents_data").on("documents").using("gin").expression(sql`data jsonb_path_ops`).execute();
+    },
   },
 ];
 
@@ -55,24 +69,21 @@ export const CORE_MIGRATIONS: readonly Migration[] = [
  * in `<schema>.migrations`. Safe to run on every start, from several processes at once: an
  * advisory lock makes concurrent migrators wait for each other.
  */
-export async function runMigrations(
-  sql: SqlClient,
-  tracks: MigrationTracks,
-  options: PostgresOptions = {},
-): Promise<MigrationReport> {
+export async function runMigrations(db: PostgresClient, tracks: MigrationTracks, options: PostgresOptions = {}): Promise<MigrationReport> {
   const schema = schemaOf(options);
-  return sql.transaction(async (tx) => {
-    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`projected-migrations:${schema}`]);
-    await tx.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
-    await tx.query(
-      `CREATE TABLE IF NOT EXISTS ${schema}.migrations (
-         track text NOT NULL,
-         version integer NOT NULL,
-         applied_at timestamptz NOT NULL DEFAULT now(),
-         PRIMARY KEY (track, version)
-       )`,
-    );
-    const { rows } = await tx.query<{ track: string; version: number }>(`SELECT track, version FROM ${schema}.migrations`);
+  return db.transaction().execute(async (tx) => {
+    await advisoryLock(tx, "projected-migrations", schema);
+    await tx.schema.createSchema(schema).ifNotExists().execute();
+    const scoped = tx.withSchema(schema);
+    await scoped.schema
+      .createTable("migrations")
+      .ifNotExists()
+      .addColumn("track", "text", (c) => c.notNull())
+      .addColumn("version", "integer", (c) => c.notNull())
+      .addColumn("applied_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .addPrimaryKeyConstraint("migrations_pkey", ["track", "version"])
+      .execute();
+    const rows = await scoped.selectFrom("migrations").select(["track", "version"]).execute();
     const done = new Set(rows.map((row) => `${row.track}@${row.version}`));
     const applied: string[] = [];
     const current: Record<string, number> = {};
@@ -80,8 +91,8 @@ export async function runMigrations(
       for (const migration of migrations) {
         const id = `${track}@${migration.version}`;
         if (done.has(id)) continue;
-        await tx.query(migration.up(schema));
-        await tx.query(`INSERT INTO ${schema}.migrations (track, version) VALUES ($1, $2)`, [track, migration.version]);
+        await migration.up(scoped as unknown as Kysely<unknown>);
+        await scoped.insertInto("migrations").values({ track, version: migration.version }).execute();
         applied.push(id);
       }
       current[track] = migrations[migrations.length - 1]?.version ?? 0;

@@ -22,9 +22,9 @@ root picks the technology:
 ```ts
 import { fromPool, migrate, postgresStores } from "@projected/store-postgres/event-sourced"; // or /state-based
 
-const sql = fromPool(new pg.Pool({ connectionString: process.env.DATABASE_URL }));
-await migrate(sql);                                    // idempotent; safe from several processes
-const { eventStore, checkpoints, idempotency, documents } = postgresStores(sql); // stateStore when state-based
+const db = fromPool(new pg.Pool({ connectionString: process.env.DATABASE_URL }));
+await migrate(db);                                     // idempotent; safe from several processes
+const { eventStore, checkpoints, idempotency, documents } = postgresStores(db); // stateStore when state-based
 ```
 
 The stores do not have to share a technology: events in KurrentDB, idempotency in Redis and read
@@ -120,8 +120,12 @@ mismatch is a `DependencyFailure`, not a crash.
   collide on a version number, even in one schema.
 - **Errors**: any driver failure becomes `DependencyUnavailable` naming the cause; a missing
   table adds "run migrate()" to the message.
-- The adapter talks to a two-method `SqlClient` (`query`, `transaction`). `fromPool` adapts
-  node-postgres; a serverless driver or PGlite takes a few lines.
+- **Queries are typed, not strings.** The adapter is built on [Kysely](https://kysely.dev): the
+  tables are declared once (`ProjectedDatabase`), and every query names tables and columns the
+  compiler checks against them, with every value a bound parameter. Kysely's `sql` template — still
+  parameterised — covers what a query builder cannot say: advisory locks and JSONB operators.
+  Migrations use Kysely's schema builder. `fromPool` connects through node-postgres; `fromDialect`
+  takes any other Kysely dialect (a serverless driver, PGlite).
 
 ## Adding a store
 

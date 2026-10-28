@@ -1,42 +1,23 @@
 import { DependencyUnavailable, Result, panic } from "@projected/application";
+import { Kysely, PostgresDialect, sql, type Dialect } from "kysely";
 import type pg from "pg";
+import type { ProjectedDatabase } from "./database.js";
 
 /**
- * The little the adapters need from a Postgres driver. `fromPool` adapts node-postgres; anything
- * else that can run parameterised queries and transactions (a serverless driver, PGlite) can
- * implement it in a few lines.
+ * The adapters' connection: a Kysely instance over projected's tables, so every query is built
+ * from typed table and column names rather than SQL strings. `fromPool` covers node-postgres;
+ * `fromDialect` any other Kysely dialect (a serverless driver, PGlite).
  */
-export interface SqlClient {
-  query<Row extends object = Record<string, unknown>>(text: string, params?: readonly unknown[]): Promise<{ rows: Row[] }>;
-  /** Run `work` in a transaction: committed when it resolves, rolled back when it throws. */
-  transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T>;
+export type PostgresClient = Kysely<ProjectedDatabase>;
+
+/** A {@link PostgresClient} over a node-postgres pool. Ending the pool is the caller's, as before. */
+export function fromPool(pool: pg.Pool): PostgresClient {
+  return new Kysely<ProjectedDatabase>({ dialect: new PostgresDialect({ pool }) });
 }
 
-/** A {@link SqlClient} over a node-postgres pool. */
-export function fromPool(pool: pg.Pool): SqlClient {
-  return {
-    query: async <Row extends object>(text: string, params?: readonly unknown[]) =>
-      pool.query(text, params as unknown[]) as unknown as Promise<{ rows: Row[] }>,
-    transaction: async (work) => {
-      const client = await pool.connect();
-      const tx: SqlClient = {
-        query: async <Row extends object>(text: string, params?: readonly unknown[]) =>
-          client.query(text, params as unknown[]) as unknown as Promise<{ rows: Row[] }>,
-        transaction: (nested) => nested(tx),
-      };
-      try {
-        await client.query("BEGIN");
-        const result = await work(tx);
-        await client.query("COMMIT");
-        return result;
-      } catch (error) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
-      }
-    },
-  };
+/** A {@link PostgresClient} over any Kysely dialect for PostgreSQL. */
+export function fromDialect(dialect: Dialect): PostgresClient {
+  return new Kysely<ProjectedDatabase>({ dialect });
 }
 
 export interface PostgresOptions {
@@ -46,11 +27,22 @@ export interface PostgresOptions {
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
 
-/** The quoted schema name, validated so it can be interpolated into SQL. */
+/** The schema name, validated: it also names the advisory locks below. */
 export function schemaOf(options: PostgresOptions = {}): string {
   const schema = options.schema ?? "projected";
   if (!IDENTIFIER.test(schema)) panic(`Postgres schema "${schema}" must be a lower-case SQL identifier`);
-  return `"${schema}"`;
+  return schema;
+}
+
+/** The client with every unqualified table in the project's schema. */
+export const inSchema = (db: PostgresClient, options: PostgresOptions = {}): PostgresClient => db.withSchema(schemaOf(options));
+
+/**
+ * Wait for the transaction-scoped advisory lock `name` in `schema`. The key text is the one the
+ * adapters have always used, so instances of an older version and this one exclude each other.
+ */
+export function advisoryLock(db: PostgresClient, name: string, schema: string): Promise<unknown> {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${`${name}:"${schema}"`}))`.execute(db);
 }
 
 /** Run a query, turning any driver failure into a `DependencyUnavailable` that names the cause. */

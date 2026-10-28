@@ -21,7 +21,7 @@ import {
   principal,
   sequentialIds,
 } from "@projected/testing/event-sourced";
-import { fromPool, migrate, postgresReadiness, postgresStores, type SqlClient } from "@projected/store-postgres/event-sourced";
+import { fromPool, migrate, postgresReadiness, postgresStores, type PostgresClient } from "@projected/store-postgres/event-sourced";
 import * as stateBased from "@projected/store-postgres/state-based";
 import { stateStoreConformance } from "@projected/testing/state-based";
 
@@ -36,21 +36,21 @@ const pool = url === undefined ? undefined : new pg.Pool({ connectionString: url
 const schemas: string[] = [];
 let counter = 0;
 
-async function freshSchema(migrator: typeof migrate = migrate): Promise<{ sql: SqlClient; schema: string }> {
+async function freshSchema(migrator: typeof migrate = migrate): Promise<{ db: PostgresClient; schema: string }> {
   if (pool === undefined) throw new Error("PROJECTED_TEST_DATABASE_URL is not set");
   const schema = `projected_test_${process.pid}_${++counter}`;
   schemas.push(schema);
-  const sql = fromPool(pool);
-  await migrator(sql, { schema });
-  return { sql, schema };
+  const db = fromPool(pool);
+  await migrator(db, { schema });
+  return { db, schema };
 }
 const stores = async () => {
-  const { sql, schema } = await freshSchema();
-  return postgresStores(sql, { schema });
+  const { db, schema } = await freshSchema();
+  return postgresStores(db, { schema });
 };
 const stateBasedStores = async () => {
-  const { sql, schema } = await freshSchema(stateBased.migrate);
-  return stateBased.postgresStores(sql, { schema });
+  const { db, schema } = await freshSchema(stateBased.migrate);
+  return stateBased.postgresStores(db, { schema });
 };
 
 afterAll(async () => {
@@ -87,25 +87,24 @@ suite("postgres", () => {
 
   describe("migrations", () => {
     it("are idempotent and safe to run concurrently", async () => {
-      const { sql, schema } = await freshSchema();
+      const { db, schema } = await freshSchema();
 
-      const again = await Promise.all([migrate(sql, { schema }), migrate(sql, { schema })]);
+      const again = await Promise.all([migrate(db, { schema }), migrate(db, { schema })]);
 
       expect(again.map((report) => report.applied)).toEqual([[], []]);
     });
 
     it("keep each flavour's tables on its own track, so one schema can hold both", async () => {
-      const { sql, schema } = await freshSchema();
+      const { db, schema } = await freshSchema();
 
-      const report = await stateBased.migrate(sql, { schema });
+      const report = await stateBased.migrate(db, { schema });
 
       expect(report.applied).toEqual(["state-based@1"]);
       expect(report.current).toEqual({ core: 1, "state-based": 1 });
     });
 
     it("report missing tables as an unavailable dependency with a hint", async () => {
-      const sql = fromPool(pool as pg.Pool);
-      const { eventStore } = postgresStores(sql, { schema: "projected_never_migrated" });
+      const { eventStore } = postgresStores(fromPool(pool as pg.Pool), { schema: "projected_never_migrated" });
 
       const read = await eventStore.readStream("x-1");
 

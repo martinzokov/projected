@@ -3,37 +3,11 @@ import {
   Result,
   type AppendResult,
   type DependencyUnavailable,
-  type EventMetadata,
   type EventStore,
   type RecordedEvent,
 } from "@projected/application/event-sourced";
-import { attempt, schemaOf, type PostgresOptions, type SqlClient } from "../sql.js";
-
-interface EventRow {
-  global_position: string;
-  event_id: string;
-  stream: string;
-  stream_version: number;
-  type: string;
-  schema_version: number;
-  data: unknown;
-  metadata: EventMetadata;
-  recorded_at: Date;
-}
-
-const toRecorded = (row: EventRow): RecordedEvent => ({
-  eventId: row.event_id,
-  stream: row.stream,
-  streamVersion: row.stream_version,
-  globalPosition: Number(row.global_position),
-  type: row.type,
-  schemaVersion: row.schema_version,
-  data: row.data,
-  metadata: row.metadata,
-  recordedAt: row.recorded_at.toISOString(),
-});
-
-const COLUMNS = "global_position, event_id, stream, stream_version, type, schema_version, data, metadata, recorded_at";
+import { COLUMNS, eventRow, toRecorded } from "../event-rows.js";
+import { advisoryLock, attempt, inSchema, schemaOf, type PostgresClient, type PostgresOptions } from "../sql.js";
 
 /** Raised inside the append transaction to roll it back; never escapes this module. */
 class Conflict extends Error {
@@ -57,58 +31,34 @@ class Conflict extends Error {
  * held only for the insert and commit; it bounds append throughput to one transaction at a time
  * per schema, which is thousands per second for short transactions.
  */
-export function postgresEventStore(sql: SqlClient, options: PostgresOptions = {}): EventStore {
-  const s = schemaOf(options);
+export function postgresEventStore(client: PostgresClient, options: PostgresOptions = {}): EventStore {
+  const db = inSchema(client, options);
+  const schema = schemaOf(options);
   const dependency = "postgres event store";
 
   return {
     readStream: (stream) =>
       attempt(dependency, async () => {
-        const { rows } = await sql.query<EventRow>(
-          `SELECT ${COLUMNS} FROM ${s}.events WHERE stream = $1 ORDER BY stream_version`,
-          [stream],
-        );
+        const rows = await db.selectFrom("events").select(COLUMNS).where("stream", "=", stream).orderBy("stream_version").execute();
         return { version: rows[rows.length - 1]?.stream_version ?? 0, events: rows.map(toRecorded) };
       }),
 
     appendToStream: async (stream, events, { expectedVersion }) => {
       const appended = await attempt(dependency, () =>
-        sql
-          .transaction(async (tx): Promise<AppendResult> => {
-            await tx.query(`INSERT INTO ${s}.streams (stream, version) VALUES ($1, 0) ON CONFLICT (stream) DO NOTHING`, [stream]);
-            const { rows } = await tx.query<{ version: number }>(
-              `SELECT version FROM ${s}.streams WHERE stream = $1 FOR UPDATE`,
-              [stream],
-            );
-            const actual = rows[0]?.version ?? 0;
+        db
+          .transaction()
+          .execute(async (tx): Promise<AppendResult> => {
+            await tx.insertInto("streams").values({ stream, version: 0 }).onConflict((conflict) => conflict.column("stream").doNothing()).execute();
+            const row = await tx.selectFrom("streams").select("version").where("stream", "=", stream).forUpdate().executeTakeFirst();
+            const actual = row?.version ?? 0;
             if (expectedVersion !== "any" && expectedVersion !== actual) throw new Conflict(actual);
             if (events.length === 0) return { version: actual, events: [] };
 
-            await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`projected-append:${s}`]);
-            const inserted = await tx.query<EventRow>(
-              `INSERT INTO ${s}.events (event_id, stream, stream_version, type, schema_version, data, metadata)
-               SELECT coalesce(e.value ->> 'event_id', gen_random_uuid()::text), $1, $2 + e.ordinality,
-                      e.value ->> 'type', (e.value ->> 'schema_version')::integer, e.value -> 'data', e.value -> 'metadata'
-               FROM jsonb_array_elements($3::jsonb) WITH ORDINALITY AS e(value, ordinality)
-               ORDER BY e.ordinality
-               RETURNING ${COLUMNS}`,
-              [
-                stream,
-                actual,
-                JSON.stringify(
-                  events.map((event) => ({
-                    event_id: event.eventId ?? null,
-                    type: event.type,
-                    schema_version: event.schemaVersion,
-                    data: event.data,
-                    metadata: event.metadata ?? {},
-                  })),
-                ),
-              ],
-            );
+            await advisoryLock(tx, "projected-append", schema);
+            const inserted = await tx.insertInto("events").values(events.map(eventRow(stream, actual))).returning(COLUMNS).execute();
             const version = actual + events.length;
-            await tx.query(`UPDATE ${s}.streams SET version = $2 WHERE stream = $1`, [stream, version]);
-            const recorded = inserted.rows.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion);
+            await tx.updateTable("streams").set({ version }).where("stream", "=", stream).execute();
+            const recorded = inserted.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion);
             return { version, events: recorded };
           })
           .catch((error: unknown) => (error instanceof Conflict ? error : Promise.reject(error))),
@@ -130,10 +80,7 @@ export function postgresEventStore(sql: SqlClient, options: PostgresOptions = {}
 
     readAll: ({ after, limit }): Promise<Result<readonly RecordedEvent[], DependencyUnavailable>> =>
       attempt(dependency, async () => {
-        const { rows } = await sql.query<EventRow>(
-          `SELECT ${COLUMNS} FROM ${s}.events WHERE global_position > $1 ORDER BY global_position LIMIT $2`,
-          [after, limit],
-        );
+        const rows = await db.selectFrom("events").select(COLUMNS).where("global_position", ">", String(after)).orderBy("global_position").limit(limit).execute();
         return rows.map(toRecorded);
       }),
   };
