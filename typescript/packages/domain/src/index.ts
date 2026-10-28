@@ -3,6 +3,10 @@
  *
  * Everything here is synchronous, deterministic and free of I/O. The architecture rules allow
  * `src/domain/**` to import this package and nothing else outside the domain.
+ *
+ * This entry point holds what both flavours share: results, schemas, events and business errors.
+ * Aggregates come from the project's flavour, which also re-exports all of this:
+ * `@projected/domain/event-sourced` or `@projected/domain/state-based`.
  */
 export {
   Err,
@@ -39,13 +43,5 @@ export {
   type EventOfDefinition,
   type SerializedEvent,
 } from "./event.js";
-export {
-  defineAggregate,
-  type AggregateDefinition,
-  type AnyAggregate,
-  type Decision,
-  type DefineAggregateOptions,
-  type EventOf,
-  type EvolveHandlers,
-  type StateOf,
-} from "./aggregate.js";
+/** A schema migration — for stored events and stored states alike. */
+export type { EventMigration as Migration } from "./event.js";

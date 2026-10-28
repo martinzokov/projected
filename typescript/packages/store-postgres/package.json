@@ -1,7 +1,7 @@
 {
   "name": "@projected/store-postgres",
   "version": "0.1.0",
-  "description": "PostgreSQL adapters for projected's storage ports: event store, checkpoints, idempotency and documents.",
+  "description": "PostgreSQL adapters for projected's storage ports: event store or state store with outbox, checkpoints, idempotency and documents.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -9,9 +9,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./event-sourced": {
+      "types": "./dist/event-sourced/index.d.ts",
+      "default": "./dist/event-sourced/index.js"
+    },
+    "./state-based": {
+      "types": "./dist/state-based/index.d.ts",
+      "default": "./dist/state-based/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@projected/application": "workspace:*",
     "better-result": "^3.0.1",

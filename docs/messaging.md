@@ -6,8 +6,9 @@ Asynchronous messaging in projected is two things, both built on one small trans
   `CommandQueue` port; `consumeCommands(app, transport, { topic })` runs them through the same
   dispatcher as HTTP: same validation, access rules, idempotency and handlers.
 - **Published events** — `eventRelay(transport, { name, topic })` is an event handler that
-  publishes each recorded event, reading the event store from a checkpoint (so the event store
-  is the outbox). `consumeEvents(handler, transport, { topic })` feeds another service's events
+  publishes each recorded event, reading the aggregate store's log from a checkpoint — the event
+  store itself, or the state store's outbox — so an event is published if and only if it was
+  committed. `consumeEvents(handler, transport, { topic })` feeds another service's events
   to one of your event handlers.
 
 The normative rules are in [`spec/protocol.md` §4](../spec/protocol.md).

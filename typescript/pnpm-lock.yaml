@@ -24,7 +24,65 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
-  examples/school:
+  examples/school-event-sourced:
+    dependencies:
+      '@opentelemetry/api':
+        specifier: ^1.10.0
+        version: 1.10.0
+      '@projected/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@projected/auth-better-auth':
+        specifier: workspace:*
+        version: link:../../packages/auth-better-auth
+      '@projected/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@projected/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@projected/kafka':
+        specifier: workspace:*
+        version: link:../../packages/kafka
+      '@projected/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
+      '@projected/nats':
+        specifier: workspace:*
+        version: link:../../packages/nats
+      '@projected/opentelemetry':
+        specifier: workspace:*
+        version: link:../../packages/opentelemetry
+      '@projected/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@projected/store-memory':
+        specifier: workspace:*
+        version: link:../../packages/store-memory
+      '@projected/store-postgres':
+        specifier: workspace:*
+        version: link:../../packages/store-postgres
+      better-auth:
+        specifier: ^1.7.14
+        version: 1.7.14(@opentelemetry/api@1.10.0)(pg@8.23.1)(vitest@5.0.5(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@projected/architecture':
+        specifier: workspace:*
+        version: link:../../packages/architecture
+      '@projected/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@projected/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+
+  examples/school-state-based:
     dependencies:
       '@opentelemetry/api':
         specifier: ^1.10.0

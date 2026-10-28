@@ -1,6 +1,6 @@
 # projected
 
-**Event-sourced, CQRS services where you write only the business logic.**
+**CQRS services — event-sourced or state-based — where you write only the business logic.**
 
 Developers and AI coding agents write events, decisions, commands, queries and handlers.
 projected derives everything around them: HTTP endpoints shaped as business operations, input
@@ -9,9 +9,18 @@ concurrency, projections, access control, duplicate command protection and distr
 The hexagonal architecture is enforced by the compiler and by checks that fail the build, so
 agent-written code cannot quietly erode it.
 
-> **Two flavours.** `master` is event-sourced. The [`state-based`](../../tree/state-based) branch
-> has the same contracts, transports, auth, idempotency, tracing and enforcement, but stores each
-> aggregate's current state instead of its events.
+> **Two flavours, one framework.** Each project picks one in `projected.json` when it is created,
+> and never changes it:
+>
+> | `"flavour"` | Aggregates are | A decision returns |
+> |---|---|---|
+> | `"event-sourced"` | folded from their events | the events that follow |
+> | `"state-based"` | stored as their current state, with an outbox for events | the next state, optionally with events |
+>
+> Contracts, the HTTP and messaging protocol, transports, auth, idempotency, tracing and
+> enforcement are identical: a caller cannot tell which flavour served it. The code below is
+> event-sourced; [`school-state-based`](typescript/examples/school-state-based) is the same
+> service in the other flavour.
 
 ```ts
 // domain — a pure decision
@@ -65,7 +74,7 @@ another service through a typed client, or through Kafka or NATS.
 | Path | What |
 |---|---|
 | [`spec/`](spec) | the language-neutral protocol ([`protocol.md`](spec/protocol.md)) and wire schemas |
-| [`typescript/`](typescript) | the TypeScript implementation: packages and the [school example](typescript/examples/school) |
+| [`typescript/`](typescript) | the TypeScript implementation: packages and the school example in [each](typescript/examples/school-event-sourced) [flavour](typescript/examples/school-state-based) |
 | [`skills/`](skills) | AI agent skills for building with projected |
 | [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [roadmap](docs/roadmap.md) |
 | [`vendor/anti-slop/`](vendor/anti-slop) | vendored copy of anti-slop's skills and configs ([`UPSTREAM.md`](vendor/anti-slop/UPSTREAM.md)) |
@@ -78,34 +87,34 @@ Requires Node 22.12+ and pnpm 10; Docker for the integration tests.
 ```sh
 cd typescript
 pnpm install
-pnpm check                  # build, lint, unit tests, and `projected check` on the example
+pnpm check                  # build, lint, unit tests, and `projected check` on both examples
 docker compose up -d --wait # Postgres, Kafka, NATS
 pnpm test:integration       # every test, including the adapters against the real servers
 ```
 
-Run the example service — in memory by default, or on real infrastructure:
+Run an example service — in memory by default, or on real infrastructure:
 
 ```sh
-cd typescript/examples/school
+cd typescript/examples/school-event-sourced      # or school-state-based
 pnpm start                  # after pnpm build at the workspace root
 DATABASE_URL=postgres://projected:projected@localhost:55432/projected \
 KAFKA_BROKERS=localhost:9092 NATS_URL=nats://localhost:4222 pnpm start
 ```
 
-See [the example's README](typescript/examples/school/README.md) for signing in and calling it.
+See [the example's README](typescript/examples/school-event-sourced/README.md) for signing in and calling it.
 
 ## Packages
 
 | Package | Layer | Purpose |
 |---|---|---|
-| `@projected/domain` | domain | Result, zod, `defineEvent`, `defineError`, `defineAggregate` — pure, no I/O |
-| `@projected/application` | application | contracts with access rules, handlers, ports (stores, auth, idempotency, telemetry), repository, event handlers, dispatcher |
+| `@projected/domain` | domain | Result, zod, `defineEvent`, `defineError`; `defineAggregate` per flavour (`/event-sourced`, `/state-based`) — pure, no I/O |
+| `@projected/application` | application | contracts with access rules, handlers, ports (auth, idempotency, telemetry, documents), event handlers, dispatcher; the aggregate store port and repository per flavour |
 | `@projected/http` | infrastructure | endpoints and OpenAPI derived from contracts, authenticators, typed `httpService`, Result-based `httpClient`; Node server in `@projected/http/node` |
 | `@projected/messaging` | infrastructure | queued commands, consumers, event relay over a pluggable transport |
 | `@projected/kafka` | infrastructure | Kafka transport (`@platformatic/kafka`) |
 | `@projected/nats` | infrastructure | NATS JetStream transport — the lightweight broker |
-| `@projected/store-memory` | infrastructure | in-memory events, checkpoints, idempotency, documents |
-| `@projected/store-postgres` | infrastructure | PostgreSQL events, checkpoints, idempotency, documents, migrations |
+| `@projected/store-memory` | infrastructure | in-memory checkpoints, idempotency, documents; event store or state store per flavour |
+| `@projected/store-postgres` | infrastructure | PostgreSQL checkpoints, idempotency, documents; event store or state store with outbox per flavour; migrations |
 | `@projected/auth-better-auth` | infrastructure | better-auth sessions as principals, its routes, OpenAPI security schemes |
 | `@projected/opentelemetry` | infrastructure | the Telemetry port on OpenTelemetry |
 | `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling |

@@ -1,8 +1,11 @@
 /**
  * @projected/application — what your application layer (`src/application/**`) imports.
  *
- * Re-exports the whole domain kernel, so use cases and contracts need a single import. Like the
- * domain kernel, it is free of I/O: ports are interfaces, adapters live in infrastructure packages.
+ * This entry point holds what both flavours share: contracts, the dispatcher, ports, event
+ * handlers and remote services. Aggregate repositories and the aggregate store port come from the
+ * project's flavour, which also re-exports all of this and the flavour's domain kernel:
+ * `@projected/application/event-sourced` or `@projected/application/state-based`. Like the domain
+ * kernel, it is free of I/O: ports are interfaces, adapters live in infrastructure packages.
  */
 export * from "@projected/domain";
 
@@ -50,15 +53,14 @@ export {
   type ValidationIssue,
 } from "./errors.js";
 export type {
-  AppendResult,
   Authenticator,
   CheckpointStore,
   Clock,
   DocumentCollection,
   DocumentFilter,
   DocumentStore,
+  EventLog,
   EventMetadata,
-  EventStore,
   ExecutionContext,
   ExpectedVersion,
   FindOptions,
@@ -69,7 +71,6 @@ export type {
   NewEvent,
   Principal,
   RecordedEvent,
-  StreamSlice,
 } from "./ports.js";
 export {
   currentTrace,
@@ -83,14 +84,7 @@ export {
   type Telemetry,
 } from "./telemetry.js";
 export { canonicalJson, sha256 } from "./fingerprint.js";
-export {
-  aggregateRepository,
-  eventMetadataFrom,
-  type AggregateRepository,
-  type AggregateRepositoryOptions,
-  type ExecutedDecision,
-  type LoadedAggregate,
-} from "./repository.js";
+export { eventMetadataFrom } from "./event-metadata.js";
 export {
   catchUp,
   defineEventHandler,

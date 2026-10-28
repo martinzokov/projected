@@ -7,10 +7,19 @@ load the `projected` skill.
 ## Layout
 
 - `spec/` — language-neutral protocol (`protocol.md`, `wire.schema.json`). Normative.
-- `typescript/` — pnpm workspace: `packages/*` (the framework) and `examples/*` (apps).
+- `typescript/` — pnpm workspace: `packages/*` (the framework) and `examples/*` (apps: the school
+  in each flavour).
 - `skills/` — distributable agent skills; `.claude/skills/` links to them and to `vendor/`.
 - `vendor/anti-slop/` — vendored upstream. Never edit by hand: run `scripts/sync-anti-slop.sh`.
 - `docs/` — architecture and decisions, enforcement table, roadmap.
+
+## Two flavours
+
+Projects are event-sourced or state-based (`"flavour"` in `projected.json`, fixed at creation).
+Packages keep shared code at their root and flavour-specific code under `src/event-sourced/` and
+`src/state-based/`, exported as `@projected/<package>/<flavour>`; each flavour entry point
+re-exports the shared API. A change to shared behaviour must keep both flavours green; a change
+to one flavour usually has a counterpart in the other (and in both school examples).
 
 ## The gate
 
@@ -45,19 +54,20 @@ pnpm test:integration         # sets PROJECTED_TEST_DATABASE_URL, _KAFKA_BROKERS
   `spec/wire.schema.json` with the HTTP/messaging adapters; the wire-spec tests check real output
   against the schema.
 - **Every store and transport passes its conformance suites** from `@projected/testing`
-  (`eventStoreConformance`, `checkpointStoreConformance`, `idempotencyStoreConformance`,
+  (`eventStoreConformance` or `stateStoreConformance`, `checkpointStoreConformance`, `idempotencyStoreConformance`,
   `documentStoreConformance`, `messageTransportConformance`), against a real server. A new
   guarantee goes into the suite, not into one adapter's tests.
 - **Adapters never throw.** Map driver failures to `DependencyUnavailable` /
   `DependencyFailure`, conflicts to `ConcurrencyConflict`.
 - **Cross-cutting behaviour belongs in the dispatcher**, not in transports: access checks,
   idempotency and operation spans apply to HTTP and messaging through the same path.
-- **Public API changes update the skills and the example.** Skill snippets must compile against
-  the real API; the school example is the reference app and must stay green under `projected check`.
+- **Public API changes update the skills and the examples.** Skill snippets must compile against
+  the real API; the school examples are the reference apps and must stay green under `projected check`.
 - **Compile-time guarantees are tested with `@ts-expect-error`** in the package tests (a missing
-  handler, an undeclared error, a missing evolve handler). Keep them when refactoring types.
+  handler, an undeclared error, a missing evolve handler, an incomplete state). Keep them when
+  refactoring types.
 - **Generated artifacts are regenerated, never hand-edited:** `projected openapi`,
-  `projected contracts --update` in the example.
+  `projected contracts --update` in the examples.
 
 ## Style
 

@@ -49,7 +49,7 @@ export const schoolContracts = defineContracts({
 | | Command | Query |
 |---|---|---|
 | Purpose | change the system | answer a question |
-| Writes events | yes, through an aggregate | never |
+| Changes an aggregate | yes, through its repository | never |
 | Reads from | the aggregate it changes | a read model (projection) or an aggregate |
 | Safe to retry | when idempotent — design for it | always |
 

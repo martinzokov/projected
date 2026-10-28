@@ -13,7 +13,7 @@ import {
   type Decision,
   type EventStore,
   type QueryHandler,
-} from "@projected/application";
+} from "@projected/application/event-sourced";
 
 /** A tiny ticketing domain used across the application tests. */
 

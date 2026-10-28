@@ -1,9 +1,10 @@
 import type { Result, z } from "@projected/domain";
-import type { ConcurrencyConflict, DependencyFailure, DependencyUnavailable } from "./errors.js";
+import type { DependencyFailure, DependencyUnavailable } from "./errors.js";
 import type { OperationResult } from "./wire.js";
 
 /**
- * Driven ports the framework itself needs. Adapters live in infrastructure packages
+ * Driven ports the framework itself needs, shared by both flavours. The aggregate store port is
+ * the flavour's (`EventStore` or `StateStore`). Adapters live in infrastructure packages
  * (`@projected/store-memory`, `@projected/store-postgres`, `@projected/runtime`, ...); use cases
  * only see these interfaces.
  */
@@ -50,10 +51,10 @@ export interface IdGenerator {
   next(): string;
 }
 
-/** Expected stream version for optimistic concurrency: an exact version (0 = no stream yet) or `"any"`. */
+/** Expected aggregate version for optimistic concurrency: an exact version (0 = never written) or `"any"`. */
 export type ExpectedVersion = number | "any";
 
-/** An event to append. The store assigns positions, the id (when absent) and the timestamp. */
+/** An event to record. The store assigns positions, the id (when absent) and the timestamp. */
 export interface NewEvent {
   readonly eventId?: string;
   readonly type: string;
@@ -68,11 +69,12 @@ export interface EventMetadata {
   readonly [key: string]: unknown;
 }
 
-/** An event as stored. */
+/** An event as recorded: in an event store's streams, or in a state store's outbox. */
 export interface RecordedEvent {
   readonly eventId: string;
+  /** Storage key of the aggregate it belongs to (`student-s-1`) — its stream, when event-sourced. */
   readonly stream: string;
-  /** 1-based position within its stream. After appending it, the stream's version is this number. */
+  /** 1-based position among that aggregate's events. */
   readonly streamVersion: number;
   /** Position in the store-wide log. Strictly increasing, not necessarily contiguous. */
   readonly globalPosition: number;
@@ -80,33 +82,15 @@ export interface RecordedEvent {
   readonly schemaVersion: number;
   readonly data: unknown;
   readonly metadata: EventMetadata;
-  /** ISO-8601 timestamp of the append. */
+  /** ISO-8601 timestamp of the write that recorded it. */
   readonly recordedAt: string;
 }
 
-export interface StreamSlice {
-  /** Number of events in the stream (0 when the stream does not exist). */
-  readonly version: number;
-  readonly events: readonly RecordedEvent[];
-}
-
-export interface AppendResult {
-  readonly version: number;
-  readonly events: readonly RecordedEvent[];
-}
-
 /**
- * The event store port: append-only streams with optimistic concurrency, plus a global log
- * for projections and integrations. `@projected/testing` ships a conformance suite every adapter
- * must pass.
+ * The ordered log of every recorded event — what event handlers and relays read. Both flavours'
+ * stores provide it: an event store's global log, or a state store's outbox.
  */
-export interface EventStore {
-  readStream(stream: string): Promise<Result<StreamSlice, DependencyUnavailable>>;
-  appendToStream(
-    stream: string,
-    events: readonly NewEvent[],
-    options: { readonly expectedVersion: ExpectedVersion },
-  ): Promise<Result<AppendResult, ConcurrencyConflict | DependencyUnavailable>>;
+export interface EventLog {
   /** Events with `globalPosition > after`, in order, at most `limit` of them. */
   readAll(options: {
     readonly after: number;

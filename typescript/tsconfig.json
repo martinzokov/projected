@@ -83,7 +83,10 @@
       "path": "packages/nats/test"
     },
     {
-      "path": "examples/school"
+      "path": "examples/school-event-sourced"
+    },
+    {
+      "path": "examples/school-state-based"
     }
   ]
 }

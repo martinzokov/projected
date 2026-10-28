@@ -6,15 +6,18 @@ import {
   fixedClock,
   idempotencyStoreConformance,
   sequentialIds,
-} from "@projected/testing";
+} from "@projected/testing/event-sourced";
 import {
   inMemoryCheckpointStore,
   inMemoryDocumentStore,
   inMemoryEventStore,
   inMemoryIdempotencyStore,
-} from "@projected/store-memory";
+} from "@projected/store-memory/event-sourced";
+import { inMemoryStateStore } from "@projected/store-memory/state-based";
+import { stateStoreConformance } from "@projected/testing/state-based";
 
 eventStoreConformance("in-memory", () => inMemoryEventStore());
+stateStoreConformance("in-memory", () => inMemoryStateStore());
 checkpointStoreConformance("in-memory", () => inMemoryCheckpointStore());
 idempotencyStoreConformance("in-memory", () => inMemoryIdempotencyStore());
 documentStoreConformance("in-memory", () => inMemoryDocumentStore());
@@ -24,6 +27,20 @@ describe("inMemoryEventStore", () => {
     const store = inMemoryEventStore({ clock: fixedClock("2024-05-01T10:00:00.000Z"), ids: sequentialIds("evt") });
 
     await store.appendToStream("order-1", [{ type: "A", schemaVersion: 1, data: {} }], { expectedVersion: 0 });
+
+    expect(store.all.map((e) => [e.eventId, e.recordedAt])).toEqual([["evt-1", "2024-05-01T10:00:00.000Z"]]);
+  });
+});
+
+describe("inMemoryStateStore", () => {
+  it("stamps outbox events with the injected clock and ids", async () => {
+    const store = inMemoryStateStore({ clock: fixedClock("2024-05-01T10:00:00.000Z"), ids: sequentialIds("evt") });
+
+    await store.save(
+      "order-1",
+      { state: { schemaVersion: 1, data: {} }, events: [{ type: "A", schemaVersion: 1, data: {} }] },
+      { expectedVersion: 0 },
+    );
 
     expect(store.all.map((e) => [e.eventId, e.recordedAt])).toEqual([["evt-1", "2024-05-01T10:00:00.000Z"]]);
   });

@@ -1,17 +1,18 @@
 # Roadmap
 
-Built so far, in TypeScript: the kernel, CQRS contracts, the dispatcher, event sourcing,
-PostgreSQL persistence (events, checkpoints, idempotency, documents), HTTP and messaging
-adapters, Kafka and NATS JetStream transports, better-auth authentication, duplicate command
-protection, OpenTelemetry tracing, OpenAPI, enforcement and skills. A sibling branch,
-`state-based`, offers the same without event sourcing. Next steps, roughly in order of value:
+Built so far, in TypeScript: the kernel, CQRS contracts, the dispatcher, two flavours chosen per
+project (event-sourced, and state-based with a transactional outbox), PostgreSQL persistence for
+both, HTTP and messaging adapters, Kafka and NATS JetStream transports, better-auth
+authentication, duplicate command protection, OpenTelemetry tracing, OpenAPI, enforcement and
+skills. Next steps, roughly in order of value:
 
 ## Persistence
 
 - **More stores**, each passing the conformance suites ([`persistence.md`](persistence.md) has
   notes per store): KurrentDB (events, checkpoints), MongoDB (all ports), Redis (idempotency,
   checkpoints, documents), Convex (documents, events via mutations).
-- **Snapshots** for long-lived aggregates, behind the repository (no API change).
+- **Snapshots** for long-lived event-sourced aggregates, behind the repository (no API change).
+- **Outbox pruning** (state-based): delete outbox rows every handler and relay has passed.
 - **Higher append throughput** on Postgres by tracking in-flight transactions instead of the
   ordering lock, if a single schema ever needs it.
 

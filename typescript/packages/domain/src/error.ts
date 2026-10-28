@@ -11,6 +11,7 @@ const RESERVED_TAGS = [
   "Panic",
   "UnhandledException",
   "EventDecodingFailed",
+  "StateDecodingFailed",
   "UnknownOperation",
   "InvalidInput",
   "OperationDefect",

@@ -1,4 +1,4 @@
-import { Result, defineAggregate, defineError, defineEvent, z, type Decision } from "@projected/domain";
+import { Result, defineAggregate, defineError, defineEvent, z, type Decision } from "@projected/domain/event-sourced";
 
 export class CounterAtLimit extends defineError("CounterAtLimit", { schema: z.object({ limit: z.number() }) }) {}
 

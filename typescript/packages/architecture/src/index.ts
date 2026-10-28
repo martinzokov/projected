@@ -4,5 +4,11 @@
  */
 export { checkArchitecture, formatViolations, type CheckOptions, type CheckReport } from "./check.js";
 export { checkLayout, type Violation } from "./layout.js";
-export { dependencyCruiserConfig, dependencyCruiserRules, type DependencyCruiserOptions } from "./dependency-cruiser.js";
+export {
+  FLAVOURS,
+  dependencyCruiserConfig,
+  dependencyCruiserRules,
+  type DependencyCruiserOptions,
+  type Flavour,
+} from "./dependency-cruiser.js";
 export { projectedEslint, type EslintOptions } from "./eslint.js";

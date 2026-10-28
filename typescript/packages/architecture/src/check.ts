@@ -38,7 +38,8 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
     const { options: cruiseOptions = {} } = config;
     const { tsConfig: _tsConfig, ...rest } = cruiseOptions;
     const result = await cruise(
-      ["src"],
+      // Tests too, so that test code cannot reach for the other flavour either.
+      existsSync(join(root, "test")) ? ["src", "test"] : ["src"],
       { ...rest, ruleSet: { forbidden: config.forbidden ?? [] }, validate: true, outputType: "json" },
       {
         extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] },

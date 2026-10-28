@@ -1,4 +1,4 @@
-import { Result, type AggregateRepository, type CommandHandler } from "@projected/application";
+import { Result, type AggregateRepository, type CommandHandler } from "@projected/application/event-sourced";
 import { Counter, increment } from "../../domain/counter.js";
 import type { Increment } from "../port/driving/contracts.js";
 import type { Limits } from "../port/driven/limits.js";

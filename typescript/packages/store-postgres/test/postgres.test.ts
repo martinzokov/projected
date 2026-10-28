@@ -12,7 +12,7 @@ import {
   defineEventHandler,
   z,
   type CommandHandler,
-} from "@projected/application";
+} from "@projected/application/event-sourced";
 import {
   checkpointStoreConformance,
   documentStoreConformance,
@@ -20,8 +20,10 @@ import {
   idempotencyStoreConformance,
   principal,
   sequentialIds,
-} from "@projected/testing";
-import { fromPool, migrate, postgresStores, type SqlClient } from "@projected/store-postgres";
+} from "@projected/testing/event-sourced";
+import { fromPool, migrate, postgresStores, type SqlClient } from "@projected/store-postgres/event-sourced";
+import * as stateBased from "@projected/store-postgres/state-based";
+import { stateStoreConformance } from "@projected/testing/state-based";
 
 /**
  * Runs against a real PostgreSQL. Set PROJECTED_TEST_DATABASE_URL to enable, e.g.
@@ -34,17 +36,21 @@ const pool = url === undefined ? undefined : new pg.Pool({ connectionString: url
 const schemas: string[] = [];
 let counter = 0;
 
-async function freshSchema(): Promise<{ sql: SqlClient; schema: string }> {
+async function freshSchema(migrator: typeof migrate = migrate): Promise<{ sql: SqlClient; schema: string }> {
   if (pool === undefined) throw new Error("PROJECTED_TEST_DATABASE_URL is not set");
   const schema = `projected_test_${process.pid}_${++counter}`;
   schemas.push(schema);
   const sql = fromPool(pool);
-  await migrate(sql, { schema });
+  await migrator(sql, { schema });
   return { sql, schema };
 }
 const stores = async () => {
   const { sql, schema } = await freshSchema();
   return postgresStores(sql, { schema });
+};
+const stateBasedStores = async () => {
+  const { sql, schema } = await freshSchema(stateBased.migrate);
+  return stateBased.postgresStores(sql, { schema });
 };
 
 afterAll(async () => {
@@ -57,6 +63,7 @@ const suite = pool === undefined ? describe.skip : describe;
 
 suite("postgres", () => {
   eventStoreConformance("postgres", async () => (await stores()).eventStore);
+  stateStoreConformance("postgres", async () => (await stateBasedStores()).stateStore);
   checkpointStoreConformance("postgres", async () => (await stores()).checkpoints);
   idempotencyStoreConformance("postgres", async () => (await stores()).idempotency);
   documentStoreConformance("postgres", async () => (await stores()).documents);
@@ -68,6 +75,15 @@ suite("postgres", () => {
       const again = await Promise.all([migrate(sql, { schema }), migrate(sql, { schema })]);
 
       expect(again.map((report) => report.applied)).toEqual([[], []]);
+    });
+
+    it("keep each flavour's tables on its own track, so one schema can hold both", async () => {
+      const { sql, schema } = await freshSchema();
+
+      const report = await stateBased.migrate(sql, { schema });
+
+      expect(report.applied).toEqual(["state-based@1"]);
+      expect(report.current).toEqual({ core: 1, "state-based": 1 });
     });
 
     it("report missing tables as an unavailable dependency with a hint", async () => {
@@ -109,6 +125,40 @@ suite("postgres", () => {
       await reader;
 
       const all = (await eventStore.readAll({ after: 0, limit: 1000 })).unwrap().map((event) => event.globalPosition);
+      expect(seen).toEqual(all);
+    });
+  });
+
+  describe("outbox ordering", () => {
+    it("never lets a catch-up reader skip an outbox event, however saves interleave", async () => {
+      const { stateStore } = await stateBasedStores();
+      const seen: number[] = [];
+      let position = 0;
+      let writing = true;
+      const reader = (async () => {
+        while (writing || seen.length < 200) {
+          const batch = (await stateStore.readAll({ after: position, limit: 50 })).unwrap();
+          for (const event of batch) {
+            seen.push(event.globalPosition);
+            position = event.globalPosition;
+          }
+        }
+      })();
+
+      await Promise.all(
+        Array.from({ length: 40 }, (_, stream) =>
+          (async () => {
+            for (let i = 0; i < 5; i++) {
+              const write = { state: { schemaVersion: 1, data: { i } }, events: [{ type: "A", schemaVersion: 1, data: { i } }] };
+              (await stateStore.save(`order-${stream}`, write, { expectedVersion: i })).unwrap();
+            }
+          })(),
+        ),
+      );
+      writing = false;
+      await reader;
+
+      const all = (await stateStore.readAll({ after: 0, limit: 1000 })).unwrap().map((event) => event.globalPosition);
       expect(seen).toEqual(all);
     });
   });

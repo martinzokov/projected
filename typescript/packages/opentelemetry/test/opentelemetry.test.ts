@@ -13,12 +13,12 @@ import {
   defineEvent,
   z,
   type CommandHandler,
-} from "@projected/application";
+} from "@projected/application/event-sourced";
 import { httpHandler } from "@projected/http";
 import { commandQueue, consumeCommands, eventRelay, inMemoryTransport } from "@projected/messaging";
 import { openTelemetry } from "@projected/opentelemetry";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
-import { sequentialIds } from "@projected/testing";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory/event-sourced";
+import { sequentialIds } from "@projected/testing/event-sourced";
 
 const exporter = new InMemorySpanExporter();
 const contextManager = new AsyncLocalStorageContextManager();

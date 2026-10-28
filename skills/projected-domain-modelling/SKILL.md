@@ -1,14 +1,28 @@
 ---
 name: projected-domain-modelling
-description: "Use when writing or changing anything in src/domain of a projected app: events, business errors, aggregates, state and decision functions, or when an event's schema has to change. Covers determinism, aggregate boundaries, idempotent decisions, and expected failures vs defects."
+description: "Use when writing or changing anything in src/domain of a projected app: events, business errors, aggregates, state and decision functions, or when an event's or a stored state's schema has to change. Covers both flavours (event-sourced and state-based), determinism, aggregate boundaries, idempotent decisions, and expected failures vs defects."
 category: software-development
 ---
 
 # Domain modelling in projected
 
 The domain is a set of **pure, synchronous functions** over immutable data. It imports
-`@projected/domain` and nothing else — the compiler has no DOM or Node library there, so `fetch`,
-`console`, timers and `node:*` do not even type-check.
+`@projected/domain/<flavour>` and nothing else — the compiler has no DOM or Node library there,
+so `fetch`, `console`, timers and `node:*` do not even type-check.
+
+**First, find the project's flavour:** `"flavour"` in `projected.json`. It decides how aggregates
+are stored and what a decision returns, and it never changes. Then read the matching reference
+for aggregates and decisions:
+
+| `flavour` | Aggregates are | A decision returns | Read |
+|---|---|---|---|
+| `event-sourced` | folded from their events (`initialState` + `evolve`) | the events that follow | [`references/event-sourced.md`](references/event-sourced.md) |
+| `state-based` | stored as their current state (a zod `schema`) | the next state (`changeTo`/`remove`/`noChange`), optionally with events | [`references/state-based.md`](references/state-based.md) |
+
+Import from your flavour's entry point (`@projected/domain/event-sourced` or
+`@projected/domain/state-based`); it re-exports everything shared, which also lives in
+`@projected/domain` itself. `projected check` rejects the other flavour's entry point. Everything
+below applies to both.
 
 ## Events: what happened
 
@@ -35,7 +49,8 @@ StudentEnlisted({ studentId: "s-1", firstname: "Bruce", lastname: "Wayne", joini
 
 ### Changing an event's shape
 
-Stored events never change. Bump the version and say how to read the old one:
+Published events never change: they are stored (event-sourced) or consumed by other services
+(both flavours). Bump the version and say how to read the old one:
 
 ```ts
 export const StudentEnlisted = defineEvent("StudentEnlisted", {
@@ -69,62 +84,27 @@ Errors without data omit the schema and take no arguments:
 then `new TermIsClosed()`. The schema is the error's public contract: clients receive the data
 and rebuild the error from it.
 
-## Aggregates: a consistency boundary
+## Aggregates and decisions: what both flavours share
 
-```ts
-export type StudentState =
-  | { readonly status: "unknown" }
-  | { readonly status: "enlisted" | "withdrawn"; readonly firstname: string; readonly lastname: string; readonly joiningDate: string };
-
-export const Student = defineAggregate({
-  name: "student",                                        // stream category: student-<id>
-  initialState: (): StudentState => ({ status: "unknown" }),   // annotate the return type
-  events: [StudentEnlisted, StudentLastnameChanged, StudentWithdrawn],
-  evolve: {
-    StudentEnlisted: (_state, { firstname, lastname, joiningDate }) => ({ status: "enlisted", firstname, lastname, joiningDate }),
-    StudentLastnameChanged: (state, { newLastname }) => (state.status === "unknown" ? state : { ...state, lastname: newLastname }),
-    StudentWithdrawn: (state) => (state.status === "unknown" ? state : { ...state, status: "withdrawn" }),
-  },
-});
-```
-
-- `evolve` must handle every listed event — a missing handler is a compile error.
-- `evolve` never rejects anything: the event already happened. Decisions reject; evolve applies.
-- Keep only the state decisions need. Read models are for queries (`projected-integrations`).
 - An aggregate is the unit of consistency: one command changes one aggregate. If a rule spans
   several, either the boundary is wrong or the rule is eventually consistent (a policy).
-
-## Decisions: state + request → events, or a broken rule
-
-```ts
-export function reportLastnameChange(
-  state: StudentState,
-  input: { studentId: string; newLastname: string; reportedAt: string },
-): Decision<typeof Student, StudentNotEnlisted> {
-  if (state.status !== "enlisted") return Result.err(new StudentNotEnlisted({ studentId: input.studentId }));
-  if (state.lastname === input.newLastname) return Result.ok([]);                // nothing to record
-  return Result.ok([StudentLastnameChanged({ ...input, previousLastname: state.lastname })]);
-}
-```
-
+- Its name is camelCase with no dashes (`student`); it is stored under `<name>-<id>`.
+- Keep only the state decisions need. Read models are for queries (`projected-integrations`).
+- Decisions are plain functions next to the aggregate:
+  `(state, input) => Decision<typeof Student, Errors>`.
 - **Pure and deterministic.** Everything a decision needs arrives as arguments: the time
   (`reportedAt`), generated ids, facts loaded from other places. The repository may run a decision
   more than once on a concurrency conflict.
-- **Three outcomes, three meanings:**
-  | Return | Meaning |
-  |---|---|
-  | `Result.ok([event, ...])` | accepted; these facts are now true |
-  | `Result.ok([])` | accepted, already true — idempotent no-op |
-  | `Result.err(new SomeError(...))` | refused; a business rule the caller can act on |
 - **Defects are not outcomes.** If a state is impossible (an invariant broke), call
   `panic("why", cause)`. Never `throw`; never return a defect as a business error.
-- Prefer idempotent decisions: retries and redelivered messages are normal in this architecture.
+- Prefer idempotent decisions — "already done" is an accepted no-op, not an error: retries and
+  redelivered messages are normal in this architecture.
 
 ## Checklist
 
-- [ ] Events are past tense, carry decision-time facts, JSON schemas only
-- [ ] Every event in `events` has an `evolve` handler; `evolve` never rejects
-- [ ] `initialState` has an annotated return type
+- [ ] Imports only from `@projected/domain/<the project's flavour>`
+- [ ] Events are past tense, carry decision-time facts and ids, JSON schemas only
 - [ ] Decisions take time/ids as input; no `Date`, `Math.random`, `async`, `throw`, `try`
 - [ ] Every rejection is a `defineError` class with a schema and a clear message
+- [ ] The flavour reference's checklist is done too
 - [ ] A given/when/then test per rule (`projected-testing`)

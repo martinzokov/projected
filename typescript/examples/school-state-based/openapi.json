@@ -1,0 +1,1749 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "school",
+    "version": "1.0.0",
+    "description": "Enlists students and answers questions about them."
+  },
+  "tags": [
+    {
+      "name": "commands",
+      "description": "Business operations that change the system."
+    },
+    {
+      "name": "queries",
+      "description": "Business questions about the system's state."
+    },
+    {
+      "name": "system",
+      "description": "Operational endpoints."
+    }
+  ],
+  "paths": {
+    "/commands/enlist-student/version/1": {
+      "post": {
+        "operationId": "enlistStudentV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Enlist a new student",
+        "description": "Superseded by version 2, which lets the caller choose the id so that retries are safe.",
+        "deprecated": true,
+        "x-projected-access": {
+          "permissions": [
+            "students:manage"
+          ]
+        },
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnlistStudentV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/EnlistStudentV1Output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/enlist-student/version/2": {
+      "post": {
+        "operationId": "enlistStudentV2",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Enlist a new student",
+        "x-projected-access": {
+          "permissions": [
+            "students:manage"
+          ]
+        },
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnlistStudentV2Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/EnlistStudentV2Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "$ref": "#/components/schemas/StudentAlreadyEnlisted"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/report-student-lastname-change/version/1": {
+      "post": {
+        "operationId": "reportStudentLastnameChangeV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Report that a student's lastname has changed",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportStudentLastnameChangeV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/ReportStudentLastnameChangeV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "$ref": "#/components/schemas/StudentNotEnlisted"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/withdraw-student/version/1": {
+      "post": {
+        "operationId": "withdrawStudentV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Record that a student leaves the school",
+        "description": "The student's record is kept; they no longer appear among enlisted students.",
+        "x-projected-access": {
+          "permissions": [
+            "students:manage"
+          ]
+        },
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawStudentV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/WithdrawStudentV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/StudentNotEnlisted"
+                            },
+                            {
+                              "$ref": "#/components/schemas/LeavingBeforeJoining"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/queries/enlisted-students-on-joining-date/version/1": {
+      "post": {
+        "operationId": "enlistedStudentsOnJoiningDateV1",
+        "tags": [
+          "queries"
+        ],
+        "summary": "Students who joined on a given date and are still enlisted",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnlistedStudentsOnJoiningDateV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/EnlistedStudentsOnJoiningDateV1Output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/queries/student-profile/version/1": {
+      "post": {
+        "operationId": "studentProfileV1",
+        "tags": [
+          "queries"
+        ],
+        "summary": "Look up one student",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "betterAuthSession": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentProfileV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/StudentProfileV1Output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands": {
+      "post": {
+        "operationId": "commandBatch",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Run several commands in one request",
+        "description": "Items run in order and independently: each has its own outcome, and a failed item does not stop the rest. Not atomic.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "commands"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "commands": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "enlist-student"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/EnlistStudentV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "enlist-student"
+                            },
+                            "version": {
+                              "const": 2
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/EnlistStudentV2Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "report-student-lastname-change"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/ReportStudentLastnameChangeV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "withdraw-student"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/WithdrawStudentV1Input"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "value"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "status": {
+                                "const": "ok"
+                              },
+                              "value": {
+                                "$ref": "#/components/schemas/EnlistStudentV1Output"
+                              }
+                            }
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/EnlistStudentV2Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "$ref": "#/components/schemas/StudentAlreadyEnlisted"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/ReportStudentLastnameChangeV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "$ref": "#/components/schemas/StudentNotEnlisted"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/WithdrawStudentV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "oneOf": [
+                                      {
+                                        "$ref": "#/components/schemas/StudentNotEnlisted"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/LeavingBeforeJoining"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "$ref": "#/components/schemas/FailedBatchItem"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          }
+        }
+      }
+    },
+    "/queries": {
+      "post": {
+        "operationId": "queryBatch",
+        "tags": [
+          "queries"
+        ],
+        "summary": "Run several queries in one request",
+        "description": "Items run in order and independently: each has its own outcome, and a failed item does not stop the rest. Not atomic.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "queries"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "queries": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "enlisted-students-on-joining-date"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/EnlistedStudentsOnJoiningDateV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "student-profile"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/StudentProfileV1Input"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "value"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "status": {
+                                "const": "ok"
+                              },
+                              "value": {
+                                "$ref": "#/components/schemas/EnlistedStudentsOnJoiningDateV1Output"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "value"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "status": {
+                                "const": "ok"
+                              },
+                              "value": {
+                                "$ref": "#/components/schemas/StudentProfileV1Output"
+                              }
+                            }
+                          },
+                          {
+                            "$ref": "#/components/schemas/FailedBatchItem"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness",
+        "responses": {
+          "200": {
+            "description": "The service is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ValidationIssue": {
+        "type": "object",
+        "required": [
+          "path",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "description": "RFC 9457 problem details. Used only for protocol-level failures, never for business outcomes.",
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            }
+          }
+        }
+      },
+      "FailedBatchItem": {
+        "type": "object",
+        "required": [
+          "status",
+          "problem"
+        ],
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "problem": {
+            "$ref": "#/components/schemas/ProblemDetails"
+          }
+        }
+      },
+      "EnlistStudentV1Input": {
+        "type": "object",
+        "properties": {
+          "firstname": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastname": {
+            "type": "string",
+            "minLength": 1
+          },
+          "joiningDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "firstname",
+          "lastname",
+          "joiningDate"
+        ]
+      },
+      "EnlistStudentV1Output": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId"
+        ],
+        "additionalProperties": false
+      },
+      "EnlistStudentV2Input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "firstname": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastname": {
+            "type": "string",
+            "minLength": 1
+          },
+          "joiningDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "studentId",
+          "firstname",
+          "lastname",
+          "joiningDate"
+        ]
+      },
+      "EnlistStudentV2Output": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId"
+        ],
+        "additionalProperties": false
+      },
+      "StudentAlreadyEnlistedData": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId"
+        ],
+        "additionalProperties": false
+      },
+      "StudentAlreadyEnlisted": {
+        "type": "object",
+        "description": "A student with this id has already been enlisted.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "StudentAlreadyEnlisted"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/StudentAlreadyEnlistedData"
+          }
+        }
+      },
+      "ReportStudentLastnameChangeV1Input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          },
+          "newLastname": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "studentId",
+          "newLastname"
+        ]
+      },
+      "ReportStudentLastnameChangeV1Output": {
+        "type": "object",
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "additionalProperties": false
+      },
+      "StudentNotEnlistedData": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId"
+        ],
+        "additionalProperties": false
+      },
+      "StudentNotEnlisted": {
+        "type": "object",
+        "description": "The student was never enlisted, or has withdrawn.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "StudentNotEnlisted"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/StudentNotEnlistedData"
+          }
+        }
+      },
+      "WithdrawStudentV1Input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          },
+          "leavingDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "studentId",
+          "leavingDate"
+        ]
+      },
+      "WithdrawStudentV1Output": {
+        "type": "object",
+        "properties": {
+          "withdrawn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "withdrawn"
+        ],
+        "additionalProperties": false
+      },
+      "LeavingBeforeJoiningData": {
+        "type": "object",
+        "properties": {
+          "joiningDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "leavingDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "joiningDate",
+          "leavingDate"
+        ],
+        "additionalProperties": false
+      },
+      "LeavingBeforeJoining": {
+        "type": "object",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "LeavingBeforeJoining"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LeavingBeforeJoiningData"
+          }
+        }
+      },
+      "EnlistedStudentsOnJoiningDateV1Input": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "date"
+        ]
+      },
+      "EnlistedStudentsOnJoiningDateV1Output": {
+        "type": "object",
+        "properties": {
+          "students": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "studentId": {
+                  "type": "string"
+                },
+                "firstname": {
+                  "type": "string"
+                },
+                "lastname": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "studentId",
+                "firstname",
+                "lastname"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "students"
+        ],
+        "additionalProperties": false
+      },
+      "StudentProfileV1Input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId"
+        ]
+      },
+      "StudentProfileV1Output": {
+        "type": "object",
+        "properties": {
+          "student": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "studentId": {
+                    "type": "string"
+                  },
+                  "firstname": {
+                    "type": "string"
+                  },
+                  "lastname": {
+                    "type": "string"
+                  },
+                  "joiningDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "enlisted",
+                      "withdrawn"
+                    ]
+                  }
+                },
+                "required": [
+                  "studentId",
+                  "firstname",
+                  "lastname",
+                  "joiningDate",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "student"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "betterAuthSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "better-auth.session_token",
+        "description": "Session cookie set by better-auth's sign-in endpoints."
+      },
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Session token from better-auth's bearer plugin."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The body is not valid JSON or does not match the operation's input schema.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The body is not `application/json`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The batch has more items than the service accepts.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "The operation needs an authenticated caller and the request has no valid credentials.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The caller lacks a permission the operation requires (see `x-projected-access`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Retry later: the command raced with another change to the same data (`concurrency-conflict`), or a request with the same idempotency key is still running (`request-in-progress`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "IdempotencyKeyReused": {
+        "description": "The idempotency key was already used for a different request. Use a new key.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "A defect in the service. Details are logged, not returned.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "A dependency of the service answered in a way it cannot handle.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "A dependency of the service is unreachable. Retry later.",
+        "headers": {
+          "retry-after": {
+            "description": "Seconds to wait before retrying.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "MessageId": {
+        "name": "x-message-id",
+        "in": "header",
+        "required": false,
+        "description": "Unique id of this request. Generated when absent.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CorrelationId": {
+        "name": "x-correlation-id",
+        "in": "header",
+        "required": false,
+        "description": "Id shared by every message in one business flow. Defaults to the message id.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CausationId": {
+        "name": "x-causation-id",
+        "in": "header",
+        "required": false,
+        "description": "Id of the message that caused this request.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "idempotency-key",
+        "in": "header",
+        "required": false,
+        "description": "Caller-chosen key identifying this command across retries. Passed to the handler as `metadata.idempotencyKey`.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "headers": {
+      "MessageId": {
+        "description": "Id of this request.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CorrelationId": {
+        "description": "Id shared by every message in this business flow.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

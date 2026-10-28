@@ -1,4 +1,4 @@
-import { aggregateRepository, createApplication, type EventStore } from "@projected/application";
+import { aggregateRepository, createApplication, type EventStore } from "@projected/application/event-sourced";
 import { Counter } from "../../domain/counter.js";
 import { counterContracts } from "../../application/port/driving/contracts.js";
 import { incrementCounter } from "../../application/usecase/increment.js";

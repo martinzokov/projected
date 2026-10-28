@@ -16,8 +16,9 @@ Commands:
                         accept current fingerprints after a toolchain upgrade (review
                         the openapi.json diff first: it must show no contract change)
 
-Configuration: optional projected.json in the project root (contracts, openapi, lock,
-applicationPackages, domainPackages).`;
+Configuration: projected.json in the project root. "flavour" ("event-sourced" or
+"state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages
+and securitySchemes are optional.`;
 
 /** Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error. */
 export async function run(argv: readonly string[], print: (line: string) => void): Promise<number> {
@@ -47,7 +48,13 @@ export async function run(argv: readonly string[], print: (line: string) => void
     return command === undefined && !values.help ? 2 : 0;
   }
 
-  const project = loadProject(values.root);
+  let project;
+  try {
+    project = loadProject(values.root);
+  } catch (error) {
+    print(`error: ${(error as Error).message}`);
+    return 1;
+  }
   const steps: Array<() => Promise<CommandResult>> = [];
   switch (command) {
     case "check":

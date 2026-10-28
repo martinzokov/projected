@@ -1,6 +1,6 @@
 ---
 name: projected
-description: "Use whenever you build, change or review a feature in a projected app (an event-sourced, CQRS service whose src/ has domain/, application/ and infrastructure/ and depends on @projected/*). The golden path from business requirement to served, documented endpoint — and the rules the compiler and `projected check` will hold you to."
+description: "Use whenever you build, change or review a feature in a projected app (a CQRS service, event-sourced or state-based, whose src/ has domain/, application/ and infrastructure/ and depends on @projected/*). The golden path from business requirement to served, documented endpoint — and the rules the compiler and `projected check` will hold you to."
 category: software-development
 ---
 
@@ -11,6 +11,19 @@ OpenAPI, message consumers, serialization, validation and persistence are derive
 write. If you find yourself writing a route, a controller, a JSON parser, a SQL query, a retry
 loop, an auth check on a token or a tracing span for a feature, stop — you are in the wrong layer
 or reinventing the framework.
+
+**Check the project's flavour first** — `"flavour"` in `projected.json`, fixed for the life of
+the project:
+
+| `flavour` | Aggregates | A decision returns | Import from |
+|---|---|---|---|
+| `event-sourced` | folded from their events | the events that follow | `@projected/<package>/event-sourced` |
+| `state-based` | stored as their current state | the next state, optionally with events | `@projected/<package>/state-based` |
+
+Each flavour entry point (`@projected/domain/…`, `@projected/application/…`,
+`@projected/store-memory/…`, `@projected/store-postgres/…`, `@projected/testing/…`) re-exports
+everything shared, so each layer needs one import. The other flavour's entry points are rejected
+by `projected check`.
 
 ## Where everything goes
 
@@ -32,10 +45,11 @@ test/                              given/when/then, use-case and HTTP tests
 
 | Layer | May import | Enforced by |
 |---|---|---|
-| `src/domain` | itself, `@projected/domain` | tsc (no DOM/Node libs, project references), dependency-cruiser, ESLint |
-| `src/application` | domain, itself, `@projected/application` | same |
+| `src/domain` | itself, `@projected/domain` (and its flavour entry point) | tsc (no DOM/Node libs, project references), dependency-cruiser, ESLint |
+| `src/application` | domain, itself, `@projected/application` (and its flavour entry point) | same |
 | `src/infrastructure` | everything | — |
-| nothing | `src/infrastructure/config` | dependency-cruiser |
+| nothing in `src` | `src/infrastructure/config` (tests may, to build the real app) | dependency-cruiser |
+| `src` and `test` | only the project's own flavour | dependency-cruiser |
 
 ## The golden path
 
@@ -47,13 +61,15 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
    export const StudentWithdrawn = defineEvent("StudentWithdrawn", {
      schema: z.object({ studentId: z.string(), leavingDate: z.iso.date() }),
    });
-   // src/domain/student/student.ts — add StudentWithdrawn to `events` and `evolve`, then:
+   // src/domain/student/student.ts — event-sourced: add StudentWithdrawn to `events` and `evolve`, then:
    export function withdraw(state: StudentState, input: { studentId: string; leavingDate: string })
      : Decision<typeof Student, StudentNotEnlisted> {
      if (state.status === "unknown") return Result.err(new StudentNotEnlisted({ studentId: input.studentId }));
      if (state.status === "withdrawn") return Result.ok([]);          // already done: no-op
      return Result.ok([StudentWithdrawn(input)]);
    }
+   // state-based: (state: StudentState | undefined, input) → Result.ok(noChange()) when already
+   // withdrawn, else Result.ok(changeTo({ ...state, status: "withdrawn" }, StudentWithdrawn(input)))
    ```
 2. **Contract** — the business operation clients call (`projected-contracts` skill):
    ```ts
@@ -68,7 +84,8 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
    });
    ```
    Add it to `defineContracts({ name, access, commands: [...] })` in `port/driving/index.ts`.
-3. **Handler** — load, decide, append; the repository does concurrency and retries:
+3. **Handler** — load, decide, write; the repository does concurrency and retries (and, when
+   state-based, writes the emitted events to the outbox in the same transaction):
    ```ts
    // src/application/usecase/withdraw-student.ts
    export const withdrawStudent =
@@ -112,6 +129,7 @@ user just *decide* to do?" — that is the command.
 
 | You want to… | Do this instead |
 |---|---|
+| use the other flavour's API | you can't: the flavour is fixed when the project is created. Model it in your flavour |
 | call `fetch`, a database, a queue | declare a port in `application/port/driven`, implement it in `infrastructure/adapter/driven/<name>`, inject it |
 | use `Date.now()` / `new Date()` | inject `Clock` into the handler; pass the time into the decision |
 | use `Math.random()` / `crypto.randomUUID()` | inject `IdGenerator` |

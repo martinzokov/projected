@@ -20,7 +20,13 @@ import type { IConfiguration, IForbiddenRuleType } from "dependency-cruiser";
  * Messages are written as instructions to whoever (or whatever agent) hits the rule.
  */
 
+/** How a project stores its aggregates. Chosen when the project is created; it never changes. */
+export type Flavour = "event-sourced" | "state-based";
+export const FLAVOURS: readonly Flavour[] = ["event-sourced", "state-based"];
+
 export interface DependencyCruiserOptions {
+  /** The project's flavour. When set, the other flavour's entry points are off limits. */
+  readonly flavour?: Flavour;
   /** Extra npm packages the application layer may import, e.g. `["date-fns"]`. Pure libraries only. */
   readonly applicationPackages?: readonly string[];
   /** Extra npm packages the domain layer may import. Think twice. */
@@ -40,7 +46,23 @@ export function dependencyCruiserRules(options: DependencyCruiserOptions = {}): 
     ...(options.applicationPackages ?? []).flatMap(pkg),
   ];
 
+  const flavourRules: IForbiddenRuleType[] = [];
+  if (options.flavour !== undefined) {
+    const other = FLAVOURS.find((f) => f !== options.flavour) ?? options.flavour;
+    flavourRules.push({
+      name: "one-flavour",
+      comment:
+        `This project is ${options.flavour} (\`flavour\` in projected.json), so the ${other} APIs are not available ` +
+        `to it: a project's flavour is fixed when it is created. Import from @projected/<package>/${options.flavour} ` +
+        "or the package's shared entry point instead.",
+      severity: "error",
+      from: {},
+      to: { path: [`(^|/)node_modules/@projected/[^/]+/(dist|src)/${other}/`, `^@projected/[^/]+/${other}($|/)`] },
+    });
+  }
+
   return [
+    ...flavourRules,
     {
       name: "domain-is-pure",
       comment:
@@ -116,10 +138,10 @@ export function dependencyCruiserRules(options: DependencyCruiserOptions = {}): 
     {
       name: "nothing-imports-config",
       comment:
-        "src/infrastructure/config is the composition root. It wires the application together; nothing may import it. " +
-        "If you need something from it, have it injected instead.",
+        "src/infrastructure/config is the composition root. It wires the application together; nothing in src may " +
+        "import it. If you need something from it, have it injected instead. (Tests may: they build the real app.)",
       severity: "error",
-      from: { pathNot: "^src/infrastructure/config/" },
+      from: { path: "^src/", pathNot: "^src/infrastructure/config/" },
       to: { path: "^src/infrastructure/config/" },
     },
     {
@@ -170,7 +192,9 @@ export function dependencyCruiserConfig(options: DependencyCruiserOptions = {}):
       // Keep `node_modules/@projected/x` paths stable whether packages are linked or installed.
       preserveSymlinks: true,
       doNotFollow: { path: "node_modules" },
-      exclude: { path: "(^|/)(dist|\\.tsbuild)/" },
+      // Only the project's own build output. Installed packages live in node_modules/<pkg>/dist,
+      // and excluding those would drop every import of them — and every rule about it.
+      exclude: { path: "^(dist|\\.tsbuild)/" },
     },
   };
 }

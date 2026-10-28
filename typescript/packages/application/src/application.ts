@@ -25,7 +25,7 @@ import { catchUp, type CatchUpReport, type EventHandler } from "./event-handler.
 import { canonicalJson, sha256 } from "./fingerprint.js";
 import type {
   CheckpointStore,
-  EventStore,
+  EventLog,
   ExecutionContext,
   IdGenerator,
   IdempotencyStore,
@@ -72,7 +72,8 @@ type HandlerOptions<C extends AnyContracts> = ({} extends HandlerMap<C["commands
 
 export interface EventHandlingOptions {
   readonly handlers: readonly EventHandler[];
-  readonly store: EventStore;
+  /** Where handlers read events from: the flavour's event store or state store. */
+  readonly store: EventLog;
   readonly checkpoints: CheckpointStore;
   /**
    * Catch handlers up after every successful command, before responding. Gives

@@ -278,7 +278,8 @@ The message id MUST be used as the idempotency key, so a redelivered command nev
 
 ### 4.2 Events
 
-Services publish recorded events as they are stored:
+Services publish recorded events as they are stored. `stream` names the aggregate that recorded
+the event and `streamVersion` counts that aggregate's events, in either flavour (§5):
 
 ```json
 {
@@ -294,9 +295,10 @@ Services publish recorded events as they are stored:
 }
 ```
 
-Events SHOULD be published by reading the event store from a checkpoint (the store is the
-outbox), so an event is never stored without eventually being published. Consumers MUST
-tolerate duplicates.
+Events SHOULD be published by reading the store's event log (§5) from a checkpoint — the event
+store itself, or the state store's outbox — so an event is never recorded without eventually
+being published, nor published for a change that was not stored. Consumers MUST tolerate
+duplicates.
 
 ### 4.3 Transports
 
@@ -315,9 +317,14 @@ executable form of this section; Kafka and NATS JetStream bindings pass it.
 
 ---
 
-## 5. Event storage
+## 5. Aggregate storage
 
-Implementations MAY use any store that provides, for the `EventStore` port:
+A service stores its aggregates in one of two flavours, fixed for the life of the service. The
+flavour is invisible to callers: everything in §1–§4, including the event envelope of §4.2, is
+identical. Implementations MAY use any store that provides the guarantees of the service's
+flavour.
+
+### 5.1 Event-sourced: the `EventStore` port
 
 1. **Streams** named `<category>-<id>`, where the category is camelCase and contains no dash.
 2. **Append with optimistic concurrency:** append succeeds only if the stream's current version
@@ -325,11 +332,38 @@ Implementations MAY use any store that provides, for the `EventStore` port:
    `any`. Of two concurrent appends at the same expected version, exactly one succeeds.
 3. **Per-stream order** with 1-based `streamVersion`.
 4. **A global log** readable after a position, in a strictly increasing `globalPosition` order.
+   A reader that has seen position N MUST never later find an event below N.
 5. **Immutability:** stored events never change.
 
 Each event is stored with `type` (PascalCase, past tense), `schemaVersion`, `data` and
 `metadata`. Readers upgrade older schema versions with migrations on read, never by rewriting
-the store. Metadata conventionally holds:
+the store.
+
+### 5.2 State-based: the `StateStore` port
+
+1. **Keys** `<category>-<id>`, where the category is camelCase and contains no dash.
+2. **Saves with optimistic concurrency:** an aggregate's version is its number of saves (0 when
+   never saved). A save succeeds only if the current version equals the expected version, or the
+   expected version is `any`, and then increments it. Of two concurrent saves at the same
+   expected version, exactly one succeeds. Removing an aggregate is a save: its state is gone,
+   its version remains.
+3. **An outbox, written atomically with the state:** the events a save emits are recorded in the
+   same transaction as the state change. A save that fails records neither.
+4. **Per-aggregate event order:** recorded events carry the aggregate's key as `stream` and a
+   1-based `streamVersion` that counts the aggregate's events across saves.
+5. **A global log** of recorded events, readable after a position, in strictly increasing
+   `globalPosition` order. A reader that has seen position N MUST never later find an event
+   below N.
+6. **Isolation:** neither stored states nor recorded events share references with callers.
+
+Each state is stored with its `schemaVersion` and `data`. Readers upgrade older schema versions
+with migrations on load; the next save writes the current version. Each recorded event is stored
+with `type` (PascalCase, past tense), `schemaVersion`, `data` and `metadata`; recorded events
+never change.
+
+### 5.3 Event metadata
+
+Recorded events, in either flavour, carry metadata that conventionally holds:
 
 | Key | Meaning |
 |---|---|
@@ -338,12 +372,13 @@ the store. Metadata conventionally holds:
 | `principalId` | who sent that message — an audit trail for free |
 | `trace` | the W3C trace context it was recorded under (§2.3) |
 
-Besides events, a service needs checkpoints (§4.2), idempotency records (§2.2) and, usually,
+Besides aggregates, a service needs checkpoints (§4.2), idempotency records (§2.2) and, usually,
 documents for read models. Each is a port with its own conformance suite; see
 [`../docs/persistence.md`](../docs/persistence.md).
 
-The TypeScript conformance suite (`eventStoreConformance` in `@projected/testing`) is the
-executable form of this section.
+The TypeScript conformance suites (`eventStoreConformance` in `@projected/testing/event-sourced`
+and `stateStoreConformance` in `@projected/testing/state-based`) are the executable form of this
+section.
 
 ---
 

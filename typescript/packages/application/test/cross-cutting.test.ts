@@ -12,9 +12,9 @@ import {
   z,
   type CommandHandler,
   type IdempotencyStore,
-} from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory";
-import { principal, recordingTelemetry, sequentialIds } from "@projected/testing";
+} from "@projected/application/event-sourced";
+import { inMemoryCheckpointStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory/event-sourced";
+import { principal, recordingTelemetry, sequentialIds } from "@projected/testing/event-sourced";
 import { OpenTicket, Ticket, TicketOpened, open } from "./fixtures.js";
 
 const admin = principal("u-admin", ["tickets:open", "tickets:close"]);

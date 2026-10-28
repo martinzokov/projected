@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createApplication, defineContracts, defineEvent, defineEventHandler, Result, z } from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
+import { createApplication, defineContracts, defineEvent, defineEventHandler, Result, z } from "@projected/application/event-sourced";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory/event-sourced";
 import { randomIds, startPolling, systemClock } from "@projected/runtime";
-import { sequentialIds } from "@projected/testing";
+import { sequentialIds } from "@projected/testing/event-sourced";
 
 const Pinged = defineEvent("Pinged", { schema: z.object({ n: z.number() }) });
 

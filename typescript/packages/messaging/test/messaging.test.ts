@@ -12,10 +12,10 @@ import {
   DependencyUnavailable,
   z,
   type CommandHandler,
-} from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
+} from "@projected/application/event-sourced";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory/event-sourced";
 import { commandQueue, consumeCommands, consumeEvents, eventRelay, inMemoryTransport } from "@projected/messaging";
-import { messageTransportConformance, sequentialIds } from "@projected/testing";
+import { messageTransportConformance, sequentialIds } from "@projected/testing/event-sourced";
 
 class AlreadyShipped extends defineError("AlreadyShipped", { schema: z.object({ orderId: z.string() }) }) {}
 const OrderShipped = defineEvent("OrderShipped", { schema: z.object({ orderId: z.string() }) });

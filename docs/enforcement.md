@@ -15,7 +15,9 @@ Run everything as CI does: `pnpm check` in `typescript/`, or `projected check` i
 | application cannot import infrastructure | `src/application` references only `../domain` | `TS6307` |
 | no `fetch`, `console`, timers, DOM in domain/application | presets set `lib: ["ES2023"]` | `TS2304` / `TS2584: Cannot find name 'console'` |
 | no `node:*` modules or Node globals in domain/application | presets set `types: []` | `TS2591` / `TS2307` |
-| every event has an `evolve` handler | mapped type over the aggregate's events | missing property |
+| every event has an `evolve` handler (event-sourced) | mapped type over the aggregate's events | missing property |
+| a decision stores a complete state of the aggregate's schema (state-based) | `Decision<A>` / `Change<A>` over `StateOf<A>` | not assignable |
+| a decision emits only the aggregate's events (state-based) | `Change<A>` over `EventOf<A>` | not assignable |
 | every contract has exactly one handler | `createApplication`'s handler map is keyed by `type@version` | missing / excess property |
 | every service decides who may call it | `defineContracts` requires `access` | missing property |
 | a handler returns only its contract's output, declared errors, or infrastructure errors | `Handler<C>` return type | not assignable |
@@ -31,6 +33,7 @@ Rules from `dependencyCruiserRules()` in `@projected/architecture`, derived from
 
 | Rule | Forbids |
 |---|---|
+| `one-flavour` | `src/` or `test/` → the other flavour's entry points (`@projected/*/state-based` in an event-sourced project, and vice versa) |
 | `domain-is-pure` | domain → anything but `src/domain` and `@projected/domain` (other packages, node builtins, other layers) |
 | `application-not-infrastructure` | application → infrastructure |
 | `application-only-uses-the-kernel` | application → any package but `@projected/domain`, `@projected/application` (plus a configured allowlist) |
@@ -38,14 +41,17 @@ Rules from `dependencyCruiserRules()` in `@projected/architecture`, derived from
 | `driving-adapters-use-driving-ports` | driving adapter → use case or driven port |
 | `driven-adapters-implement-driven-ports` | driven adapter → use case or driving port |
 | `adapters-are-independent` | adapter → any other adapter |
-| `nothing-imports-config` | anything → the composition root |
+| `nothing-imports-config` | anything in `src/` → the composition root (tests may: they build the real app) |
 | `test-code-stays-in-tests` | `src/` → `@projected/testing`, `vitest`, `test/` |
 | `known-layers-only` | files outside the known layer folders |
 | `no-circular` | import cycles |
 | `not-to-unresolvable` | imports that do not resolve |
 
-Type-only imports count (`tsPreCompilationDeps`), and symlinked workspace packages resolve the
-same as installed ones (`preserveSymlinks`).
+Type-only imports count (`tsPreCompilationDeps`), symlinked workspace packages resolve the same
+as installed ones (`preserveSymlinks`), and only the project's own build output is excluded —
+imports of installed packages (`node_modules/<pkg>/dist/…`) are checked like any other. The
+fitness tests link real framework packages into the fixture, so every package rule is proven
+against a resolvable import.
 
 ## Tier 1 — ESLint (code)
 
@@ -96,7 +102,8 @@ Not static rules, but every adapter must demonstrate them against a real server:
 
 | Suite | Holds |
 |---|---|
-| `eventStoreConformance` | optimistic concurrency, per-stream and global order, immutability |
+| `eventStoreConformance` (event-sourced) | optimistic concurrency, per-stream and global order, immutability |
+| `stateStoreConformance` (state-based) | optimistic concurrency, atomic state + outbox, removal keeps the version, per-aggregate and global event order, isolation |
 | `checkpointStoreConformance` | positions per handler, beyond 32 bits |
 | `idempotencyStoreConformance` | exactly one concurrent claim, replay, release, lock take-over, expiry |
 | `documentStoreConformance` | equality filters, ordering, isolation, schema validation on read |

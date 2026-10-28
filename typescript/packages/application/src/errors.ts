@@ -6,9 +6,10 @@ import { TaggedError } from "@projected/domain";
  * protocol-level responses (HTTP 409/502/503, message redelivery) — never to a business outcome.
  */
 
-/** Someone else wrote to the stream between our read and our append. Safe to retry. */
+/** Someone else wrote to the aggregate between our read and our write. Safe to retry. */
 export class ConcurrencyConflict extends TaggedError("ConcurrencyConflict")<{
-  stream: string;
+  /** Storage key of the aggregate: its stream, when event-sourced. */
+  key: string;
   expectedVersion: number | "any";
   actualVersion: number;
   message: string;

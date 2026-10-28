@@ -26,7 +26,7 @@ function fixture(edits: Edit = {}): string {
   rmSync(root, { recursive: true, force: true });
   cpSync(join(here, "fixture"), root, { recursive: true });
   mkdirSync(join(root, "node_modules", "@projected"), { recursive: true });
-  for (const name of ["domain", "application", "architecture"]) {
+  for (const name of ["domain", "application", "architecture", "http", "testing"]) {
     symlinkSync(join(packages, name), join(root, "node_modules", "@projected", name), "dir");
   }
   for (const [file, edit] of Object.entries(edits)) {
@@ -134,6 +134,41 @@ describe("import boundaries (dependency-cruiser)", () => {
     const report = await checkArchitecture(fixture(edits));
 
     expect(rules(report.violations)).toContain(expected);
+  });
+});
+
+describe("one flavour per project (dependency-cruiser)", () => {
+  it("accepts the fixture's own flavour", async () => {
+    const report = await checkArchitecture(fixture(), { flavour: "event-sourced" });
+
+    expect(report.violations).toEqual([]);
+  });
+
+  it("rejects the domain importing the other flavour's kernel", async () => {
+    const report = await checkArchitecture(
+      fixture({ "src/domain/leak.ts": `import { changeTo } from "@projected/domain/state-based";\nexport const x = changeTo;\n` }),
+      { flavour: "event-sourced" },
+    );
+
+    expect(rules(report.violations)).toContain("dependency-cruiser/one-flavour");
+  });
+
+  it("lets tests build the app through the composition root", async () => {
+    const report = await checkArchitecture(
+      fixture({ "test/app.ts": `import { compose } from "../src/infrastructure/config/main.js";\nexport const app = compose;\n` }),
+      { flavour: "event-sourced" },
+    );
+
+    expect(report.violations).toEqual([]);
+  });
+
+  it("rejects tests importing the other flavour", async () => {
+    const report = await checkArchitecture(
+      fixture({ "test/leak.ts": `import { aggregateRepository } from "@projected/application/event-sourced";\nexport const x = aggregateRepository;\n` }),
+      { flavour: "state-based" },
+    );
+
+    expect(rules(report.violations)).toContain("dependency-cruiser/one-flavour");
   });
 });
 

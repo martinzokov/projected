@@ -16,13 +16,14 @@ const failWith = (...lines: string[]): CommandResult => ({ ok: false, lines });
 
 export async function architecture(project: Project): Promise<CommandResult> {
   const report = await checkArchitecture(project.root, {
+    flavour: project.flavour,
     ...(project.config.applicationPackages === undefined ? {} : { applicationPackages: project.config.applicationPackages }),
     ...(project.config.domainPackages === undefined ? {} : { domainPackages: project.config.domainPackages }),
   });
   const summary = `checked ${report.checked.dependencyCruiser} modules (imports) and ${report.checked.eslint} files (code rules)`;
-  if (report.violations.length === 0) return pass(`architecture: ok — ${summary}`);
+  if (report.violations.length === 0) return pass(`architecture (${project.flavour}): ok — ${summary}`);
   return failWith(
-    `architecture: ${report.violations.length} violation(s) — ${summary}`,
+    `architecture (${project.flavour}): ${report.violations.length} violation(s) — ${summary}`,
     formatViolations(report.violations),
   );
 }
@@ -52,9 +53,16 @@ export async function contractsLock(
   project: Project,
   options: { update: boolean; allowRemoval: boolean; rebaseline?: boolean },
 ): Promise<CommandResult> {
-  const contracts = await loadContracts(project);
   const file = relative(project.root, project.lockPath);
   const lock = existsSync(project.lockPath) ? (JSON.parse(readFileSync(project.lockPath, "utf8")) as ContractsLock) : undefined;
+  if (lock?.flavour !== undefined && lock.flavour !== project.flavour) {
+    return failWith(
+      `contracts: this project was created ${lock.flavour} (${file}), but projected.json now says ${project.flavour}.`,
+      `  A project's flavour never changes: set "flavour" back to "${lock.flavour}". To move to ${project.flavour}, ` +
+        "create a new service with `projected new service` and migrate the data into it.",
+    );
+  }
+  const contracts = await loadContracts(project);
   if (lock !== undefined && lock.lockfileVersion !== LOCKFILE_VERSION && !options.rebaseline) {
     return failWith(
       `contracts: ${file} is lockfile version ${lock.lockfileVersion}; this projected fingerprints contracts as version ${LOCKFILE_VERSION}.`,
@@ -82,19 +90,25 @@ export async function contractsLock(
   }
 
   if (options.rebaseline) {
-    writeFileSync(project.lockPath, render(updateLock(lock, contracts, { allowRemoval: options.allowRemoval, rebaseline: true })));
+    writeFileSync(
+      project.lockPath,
+      render(updateLock(lock, contracts, { allowRemoval: options.allowRemoval, rebaseline: true, flavour: project.flavour })),
+    );
     return pass(
       `contracts: rebaselined ${file}${changed.length > 0 ? ` — accepted new fingerprints for ${changed.join(", ")}` : ""}`,
       "contracts: only do this after a toolchain upgrade, and only if the openapi.json diff shows no change to any published operation.",
     );
   }
   if (options.update) {
-    writeFileSync(project.lockPath, render(updateLock(lock, contracts, { allowRemoval: options.allowRemoval })));
+    writeFileSync(project.lockPath, render(updateLock(lock, contracts, { allowRemoval: options.allowRemoval, flavour: project.flavour })));
     const accepted = [...added, ...(options.allowRemoval ? removed.map((key) => `${key} (removed)`) : [])];
     const lines = [`contracts: updated ${file}${accepted.length > 0 ? ` — ${accepted.join(", ")}` : ""}`];
     return problems.length === 0 ? pass(...lines) : failWith(...lines, "contracts: published operations changed:", ...problems);
   }
   for (const key of added) problems.push(`  ${key} is new and not locked yet — run \`projected contracts --update\`.`);
+  if (lock !== undefined && lock.flavour === undefined) {
+    problems.push(`  ${file} does not record the project's flavour yet — run \`projected contracts --update\`.`);
+  }
   if (problems.length === 0) return pass(`contracts: ${file} matches all ${Object.keys(lock?.operations ?? {}).length} operations`);
   return failWith(`contracts: ${file} does not match the code`, ...problems);
 }

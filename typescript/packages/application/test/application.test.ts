@@ -17,9 +17,9 @@ import {
   type EventStore,
   type OperationDefect,
   type QueryHandler,
-} from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
-import { sequentialIds } from "@projected/testing";
+} from "@projected/application/event-sourced";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory/event-sourced";
+import { sequentialIds } from "@projected/testing/event-sourced";
 import {
   CloseTicket,
   OpenTicket,
@@ -289,7 +289,7 @@ describe("aggregateRepository", () => {
     const alwaysConflicting: EventStore = {
       ...store,
       appendToStream: async (stream) =>
-        Result.err(new ConcurrencyConflict({ stream, expectedVersion: 0, actualVersion: 1, message: "conflict" })),
+        Result.err(new ConcurrencyConflict({ key: stream, expectedVersion: 0, actualVersion: 1, message: "conflict" })),
     };
     const decide = vi.fn((state: Parameters<typeof open>[0]) => open(state, { ticketId: "t-1", title: "x" }));
 

@@ -1,11 +1,17 @@
 import type { AnyContracts } from "@projected/application";
+import { FLAVOURS, type Flavour } from "@projected/architecture";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tsImport } from "tsx/esm/api";
 
-/** `projected.json` at the project root. Every field is optional. */
+/** `projected.json` at the project root. Every field but `flavour` is optional. */
 export interface ProjectConfig {
+  /**
+   * How the project stores its aggregates: `"event-sourced"` or `"state-based"`. Required, and
+   * fixed for the life of the project — chosen when it is created, recorded in the contract lock.
+   */
+  readonly flavour?: Flavour;
   /** Module exporting the service's contracts. Defaults to `src/application/port/driving/index.ts`. */
   readonly contracts?: string;
   /** Name of the export, when the module exports more than one contracts set. */
@@ -25,6 +31,7 @@ export interface ProjectConfig {
 export interface Project {
   readonly root: string;
   readonly config: ProjectConfig;
+  readonly flavour: Flavour;
   /** `version` from package.json, used as the OpenAPI document's `info.version`. */
   readonly version: string;
   readonly openapiPath: string;
@@ -35,6 +42,14 @@ export function loadProject(rootArgument: string): Project {
   const root = isAbsolute(rootArgument) ? rootArgument : resolve(rootArgument);
   const configPath = join(root, "projected.json");
   const config = existsSync(configPath) ? (JSON.parse(readFileSync(configPath, "utf8")) as ProjectConfig) : {};
+  const flavour = config.flavour;
+  if (flavour === undefined || !FLAVOURS.includes(flavour)) {
+    throw new Error(
+      `${configPath} must set "flavour" to ${FLAVOURS.map((f) => `"${f}"`).join(" or ")}` +
+        (flavour === undefined ? "" : ` (found ${JSON.stringify(flavour)})`) +
+        ". It is chosen once, when the project is created, and never changes.",
+    );
+  }
   const packagePath = join(root, "package.json");
   const version = existsSync(packagePath)
     ? ((JSON.parse(readFileSync(packagePath, "utf8")) as { version?: string }).version ?? "0.0.0")
@@ -42,6 +57,7 @@ export function loadProject(rootArgument: string): Project {
   return {
     root,
     config,
+    flavour,
     version,
     openapiPath: join(root, config.openapi ?? "openapi.json"),
     lockPath: join(root, config.lock ?? "contracts.lock.json"),

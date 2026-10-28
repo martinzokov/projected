@@ -1,6 +1,6 @@
 ---
 name: projected-testing
-description: "Use when writing or reviewing tests in a projected app: decision rules (given/when/then), use cases with in-memory adapters, HTTP endpoints through the real handler, event handlers, and EventStore adapters (conformance suite). Builds on the vendored properties-of-good-tests skill."
+description: "Use when writing or reviewing tests in a projected app: decision rules (given/when/then), use cases with in-memory adapters, HTTP endpoints through the real handler, event handlers, and store and transport adapters (conformance suites), in both flavours. Builds on the vendored properties-of-good-tests skill."
 category: software-development
 ---
 
@@ -19,8 +19,13 @@ where each kind of test goes. Tests live in `test/`, never in `src/`.
 
 ## Decisions: given / when / then
 
+`given` comes from your flavour's entry point and speaks its language: an event history when
+event-sourced, a state when state-based. One rule per test, named as the rule.
+
+**Event-sourced** (`@projected/testing/event-sourced`):
+
 ```ts
-import { given } from "@projected/testing";
+import { given } from "@projected/testing/event-sourced";
 
 const enlisted = StudentEnlisted({ studentId: "s-1", firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" });
 
@@ -37,16 +42,50 @@ it("records nothing when the name is unchanged", () => {
 });
 ```
 
-`thenEvents(...)` asserts the exact events in order. One rule per test, named as the rule. The
-history is events — never construct state by hand, or the test stops checking `evolve`.
+`thenEvents(...)` asserts the exact events in order. The history is events — never construct
+state by hand, or the test stops checking `evolve`.
+
+**State-based** (`@projected/testing/state-based`):
+
+```ts
+import { given } from "@projected/testing/state-based";
+
+const bruce = { studentId: "s-1", firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22" };
+const enlisted: StudentState = { firstname: "Bruce", lastname: "Wayne", joiningDate: "2023-09-22", status: "enlisted" };
+
+it("enlists a new student", () => {
+  given(Student)                                              // no such student yet
+    .when((state) => enlist(state, bruce))
+    .thenChangesTo(enlisted, StudentEnlisted(bruce));
+});
+
+it("refuses to enlist the same student twice", () => {
+  given(Student, enlisted)
+    .when((state) => enlist(state, bruce))
+    .thenRejectsWith(StudentAlreadyEnlisted, { studentId: "s-1" });
+});
+
+it("changes nothing when the name is unchanged", () => {
+  given(Student, enlisted)
+    .when((state) => reportLastnameChange(state, { studentId: "s-1", newLastname: "Wayne", reportedAt: "2023-10-01T09:00:00.000Z" }))
+    .thenNothingHappens();
+});
+```
+
+`thenChangesTo(state, ...events)` asserts the exact next state and the exact events in order;
+`thenRemoves(...events)` a removal. One rule per test, named as the rule. The given state and the
+state a decision stores both go through the aggregate's schema, so a test cannot pass with a state
+the store would refuse.
 
 ## Use cases: the real composition, in memory
 
 Build the app with the real composition root and test doubles for the outside world:
 
 ```ts
-import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory";
-import { fixedClock, principal, sequentialIds } from "@projected/testing";
+// event-sourced; a state-based project imports the /state-based entry points and passes
+// `stateStore: inMemoryStateStore(...)` instead of `eventStore`
+import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory/event-sourced";
+import { fixedClock, principal, sequentialIds } from "@projected/testing/event-sourced";
 
 const clock = fixedClock("2023-10-01T09:00:00.000Z");
 const app = composeSchool({
@@ -98,18 +137,22 @@ client of another service without a network, pass the handler as `fetch`:
 
 ## Event handlers
 
-Prefer testing them through the app (command → query). In isolation: create an
-`inMemoryEventStore`, append encoded events (`Student.encode(StudentEnlisted({...}))`), and run
-`catchUp(handler, store, inMemoryCheckpointStore())`. Run it twice to prove idempotency.
+Prefer testing them through the app (command → query). In isolation, record events in an
+in-memory store and run `catchUp(handler, store, inMemoryCheckpointStore())`; run it twice to
+prove idempotency:
+
+- event-sourced: `inMemoryEventStore()`, then `appendToStream(key, [Student.encode(StudentEnlisted({...}))], { expectedVersion: 0 })`
+- state-based: `inMemoryStateStore()`, then `save(key, { state: Student.encode(state), events: [Student.encodeEvent(StudentEnlisted({...}))] }, { expectedVersion: 0 })`
 
 ## Adapters
 
 Every store and transport passes the conformance suites for the ports it implements, against a
-real server — `eventStoreConformance`, `checkpointStoreConformance`, `idempotencyStoreConformance`,
+real server — `eventStoreConformance` or `stateStoreConformance` (from the flavour entry points),
+`checkpointStoreConformance`, `idempotencyStoreConformance`,
 `documentStoreConformance`, `messageTransportConformance`:
 
 ```ts
-import { documentStoreConformance, eventStoreConformance } from "@projected/testing";
+import { documentStoreConformance, eventStoreConformance } from "@projected/testing/event-sourced";
 eventStoreConformance("postgres", async () => postgresEventStore(sql, { schema: await freshSchema() }));
 documentStoreConformance("postgres", async () => postgresDocumentStore(sql, { schema: await freshSchema() }));
 ```

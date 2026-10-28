@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
-import { createApplication, defineCommand, defineContracts, defineEvent, z } from "@projected/application";
-import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory";
+import { createApplication, defineCommand, defineContracts, defineEvent, z } from "@projected/application/event-sourced";
+import { inMemoryCheckpointStore, inMemoryEventStore } from "@projected/store-memory/event-sourced";
 import { commandQueue, eventRelay, inMemoryTransport } from "@projected/messaging";
-import { principal, sequentialIds } from "@projected/testing";
+import { principal, sequentialIds } from "@projected/testing/event-sourced";
 
 /** The messaging binding must produce exactly the shapes in spec/wire.schema.json. */
 

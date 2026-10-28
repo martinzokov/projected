@@ -1,7 +1,8 @@
 # projected — architecture and decisions
 
-projected is a system for building event-sourced, CQRS services in which developers and AI
-agents write **only domain and application logic**. Transport, persistence, serialization,
+projected is a system for building CQRS services in which developers and AI agents write **only
+domain and application logic**. Each service is either event-sourced or state-based — its
+*flavour*, chosen once when it is created (D16). Transport, persistence, serialization,
 validation and API documentation are derived from that logic, and the architecture is enforced
 by machines rather than by convention.
 
@@ -53,7 +54,7 @@ unchanged, and maps its own concepts onto it:
 | domain model | aggregates, events, decisions, business errors | `src/domain` | you |
 | driving port | **contracts** (commands, queries) | `src/application/port/driving` | you |
 | use case | **handlers**, projections, policies | `src/application/usecase` | you |
-| driven port | framework ports (`EventStore`, `CheckpointStore`, `IdempotencyStore`, `DocumentStore`, `Clock`, `IdGenerator`, `Telemetry`, `RemoteService`, `CommandQueue`) and your own (`StudentDirectory`) | `@projected/application`, `src/application/port/driven` | framework / you |
+| driven port | framework ports (the flavour's `EventStore` or `StateStore`, `CheckpointStore`, `IdempotencyStore`, `DocumentStore`, `Clock`, `IdGenerator`, `Telemetry`, `RemoteService`, `CommandQueue`) and your own (`StudentDirectory`) | `@projected/application`, `src/application/port/driven` | framework / you |
 | driving adapter | HTTP endpoints, message consumers, with the `Authenticator` at the edge | `@projected/http`, `@projected/messaging`, `@projected/kafka`, `@projected/nats`, `@projected/auth-better-auth` | **framework** |
 | driven adapter | stores, brokers, HTTP clients, tracing, your adapters | `@projected/store-*`, `@projected/opentelemetry`, `src/infrastructure/adapter/driven` | framework / you |
 | composition root | `createApplication(...)` | `src/infrastructure/config` | you (wiring only) |
@@ -89,10 +90,16 @@ contain no I/O. Every other package — including every framework adapter — is
 
 ---
 
-## 3. Event sourcing model
+## 3. Aggregate models
 
-- **Events** are `{ type, data }`, defined with a zod schema and a schema version. Older stored
-  versions are upgraded on read through declared migrations; stored events never change.
+Both flavours share events (`{ type, data }`, defined with a zod schema and a schema version,
+older versions upgraded on read through declared migrations), business errors, the decider
+split into separate decision functions, repositories with optimistic concurrency and retries,
+and event handlers reading a global log from a checkpoint. They differ in what is stored.
+
+### 3.1 Event-sourced
+
+- **Events are the storage.** Stored events never change.
 - **Aggregates** follow the decider pattern, split for ergonomics: `defineAggregate` declares the
   initial state and an `evolve` handler per event (exhaustive at compile time). Decisions are
   separate pure functions `(state, input) => Result<events, BusinessError>`, so each rule can be
@@ -106,6 +113,28 @@ contain no I/O. Every other package — including every framework adapter — is
 - **Event handlers** (projections and policies) consume the global log from a checkpoint, at
   least once. They run inline after each command (read-your-writes) or in the background. The
   event relay is just another event handler, so the event store is the outbox.
+
+### 3.2 State-based
+
+- **Aggregates** are declared with `defineAggregate({ name, schema, version, migrations, events })`:
+  a zod schema for the stored state, a schema version with migrations for older stored shapes,
+  and the events decisions may emit. Stored states are validated (and upgraded) on load, and
+  validated on save, so a refinement a decision breaks is caught before it is stored.
+- **Decisions** are pure functions `(state | undefined, input) => Result<Change, BusinessError>`,
+  where a `Change` is `changeTo(nextState, ...events)`, `remove(...events)` or `noChange()`.
+  `undefined` means "does not exist". Each rule can be named, tested and reused by several
+  contract versions.
+- **Repositories** (`aggregateRepository(aggregate, store)`) run load → decode → decide → save,
+  with the loaded version as the expected version. On a conflict the cycle re-runs on fresh
+  state (decisions are pure, so this is safe), up to a limit. Emitted events carry correlation
+  and causation ids, the principal and the trace from the request that caused them.
+- **Keys** are `<category>-<id>`. A save writes the state, bumps the version and appends the
+  emitted events to the store's **outbox** in one transaction; the outbox is a global log with
+  strictly increasing positions.
+- **Event handlers** (projections and policies) consume the outbox from a checkpoint, at least
+  once. They run inline after each command (read-your-writes) or in the background. The event
+  relay is just another event handler, so a broker never hears of a change that was not
+  committed, and never misses one that was.
 
 ## 4. Error model
 
@@ -169,7 +198,9 @@ a check is only trusted once it has been seen to fail.
 **D5 — The decider is split into `evolve` and decision functions.** One `decide(command, state)`
 with a command union scales poorly in TypeScript and forces every rule into one function.
 Separate decisions are pure functions with precise error types, reusable across contract
-versions (`enlist-student` v1 and v2 share `enlist`).
+versions (`enlist-student` v1 and v2 share `enlist`). In the state-based flavour there is no `evolve`: a decision
+returns the complete next state (not a patch), which keeps it trivially testable and the stored
+state schema-checked.
 
 **D6 — Business errors carry schemas (`defineError`).** better-result's `TaggedError` gives typed,
 matchable errors; `defineError` adds a runtime schema so errors can be documented in OpenAPI and
@@ -222,6 +253,21 @@ groups), dead letters at `<topic>.dead-letter`, at-least-once. Kafka retries in 
 partition order; NATS JetStream uses native delayed `nak`. One conformance suite holds both — and
 any future broker — to the same behaviour.
 
+**D16 — Two flavours, one framework, chosen per project.** Event sourcing is the right default
+for auditable, temporal domains, and too much ceremony for many others. Each package keeps what
+both flavours share at its root and adds `/event-sourced` and `/state-based` entry points for
+what differs: the aggregate kernel (`@projected/domain`), the store port and repository
+(`@projected/application`), the stores (`@projected/store-memory`, `@projected/store-postgres`)
+and `given` plus the store conformance suite (`@projected/testing`). Each flavour entry point
+re-exports the shared API, so a layer still needs one import. A project declares its flavour in
+`projected.json`; `projected check` rejects imports of the other flavour's entry points (in `src`
+and `test`), and the contract lock records the flavour so it can never change afterwards.
+Everything callers see is identical — contracts, the HTTP and messaging bindings and the event
+envelope (`stream` and `streamVersion` name the emitting aggregate and count its events) — so a
+client, a broker consumer or another service cannot tell which flavour served it. Postgres keeps
+each flavour's tables on its own migration track. (Until this decision the flavours lived on
+two branches; `state-based` is kept only for its history.)
+
 ---
 
 ## 7. Other languages
@@ -236,7 +282,7 @@ The design separates what is language-neutral from what is TypeScript-specific:
 | skills: modelling, naming, versioning, testing | enforcement with the strongest local tier |
 
 A port is complete when an example service in the new language passes the same HTTP-level
-behaviour as `typescript/examples/school` and its architecture checks fail on seeded violations.
+behaviour as `typescript/examples/school-*` and its architecture checks fail on seeded violations.
 anti-slop's skill already holds validated enforcement configs for Python (import-linter),
 Go (depguard + `internal/`), Java/Kotlin (ArchUnit), C# (NetArchTest) and Rust (crate per layer).
 Kotlin and Rust can make even more of the rules compile-time than TypeScript can: module/crate

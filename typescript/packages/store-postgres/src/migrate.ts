@@ -1,29 +1,29 @@
 import { schemaOf, type PostgresOptions, type SqlClient } from "./sql.js";
 
+/** One schema change. Never edit a published entry: add a new one. */
+export interface Migration {
+  readonly version: number;
+  readonly up: (schema: string) => string;
+}
+
 /**
- * Ordered, append-only schema migrations. Never edit a published entry: add a new one. Each runs
- * once, in a transaction, recorded in `<schema>.migrations`.
+ * Independent, ordered lists of migrations, keyed by track. Each flavour's tables are their own
+ * track next to the shared `core` one, so the two flavours can never collide on a version number.
  */
-const MIGRATIONS: ReadonlyArray<{ readonly version: number; readonly up: (schema: string) => string }> = [
+export type MigrationTracks = Readonly<Record<string, readonly Migration[]>>;
+
+export interface MigrationReport {
+  /** What this run applied, as `track@version`. */
+  readonly applied: readonly string[];
+  /** The latest version of each track. */
+  readonly current: Readonly<Record<string, number>>;
+}
+
+/** Tables both flavours need: checkpoints, idempotency records and documents. */
+export const CORE_MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
     up: (s) => `
-      CREATE TABLE ${s}.streams (
-        stream text PRIMARY KEY,
-        version integer NOT NULL
-      );
-      CREATE TABLE ${s}.events (
-        global_position bigserial PRIMARY KEY,
-        event_id text NOT NULL UNIQUE,
-        stream text NOT NULL,
-        stream_version integer NOT NULL,
-        type text NOT NULL,
-        schema_version integer NOT NULL,
-        data jsonb NOT NULL,
-        metadata jsonb NOT NULL DEFAULT '{}',
-        recorded_at timestamptz NOT NULL DEFAULT now(),
-        UNIQUE (stream, stream_version)
-      );
       CREATE TABLE ${s}.checkpoints (
         name text PRIMARY KEY,
         position bigint NOT NULL,
@@ -50,32 +50,42 @@ const MIGRATIONS: ReadonlyArray<{ readonly version: number; readonly up: (schema
   },
 ];
 
-export interface MigrationReport {
-  readonly applied: readonly number[];
-  readonly current: number;
-}
-
 /**
- * Create or upgrade projected's tables. Safe to run on every start, from several processes at
- * once: an advisory lock makes concurrent migrators wait for each other.
+ * Create or upgrade the tables of the given tracks. Each migration runs once, in order, recorded
+ * in `<schema>.migrations`. Safe to run on every start, from several processes at once: an
+ * advisory lock makes concurrent migrators wait for each other.
  */
-export async function migrate(sql: SqlClient, options: PostgresOptions = {}): Promise<MigrationReport> {
+export async function runMigrations(
+  sql: SqlClient,
+  tracks: MigrationTracks,
+  options: PostgresOptions = {},
+): Promise<MigrationReport> {
   const schema = schemaOf(options);
   return sql.transaction(async (tx) => {
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`projected-migrations:${schema}`]);
     await tx.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
     await tx.query(
-      `CREATE TABLE IF NOT EXISTS ${schema}.migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`,
+      `CREATE TABLE IF NOT EXISTS ${schema}.migrations (
+         track text NOT NULL,
+         version integer NOT NULL,
+         applied_at timestamptz NOT NULL DEFAULT now(),
+         PRIMARY KEY (track, version)
+       )`,
     );
-    const { rows } = await tx.query<{ version: number }>(`SELECT version FROM ${schema}.migrations`);
-    const done = new Set(rows.map((row) => row.version));
-    const applied: number[] = [];
-    for (const migration of MIGRATIONS) {
-      if (done.has(migration.version)) continue;
-      await tx.query(migration.up(schema));
-      await tx.query(`INSERT INTO ${schema}.migrations (version) VALUES ($1)`, [migration.version]);
-      applied.push(migration.version);
+    const { rows } = await tx.query<{ track: string; version: number }>(`SELECT track, version FROM ${schema}.migrations`);
+    const done = new Set(rows.map((row) => `${row.track}@${row.version}`));
+    const applied: string[] = [];
+    const current: Record<string, number> = {};
+    for (const [track, migrations] of Object.entries(tracks)) {
+      for (const migration of migrations) {
+        const id = `${track}@${migration.version}`;
+        if (done.has(id)) continue;
+        await tx.query(migration.up(schema));
+        await tx.query(`INSERT INTO ${schema}.migrations (track, version) VALUES ($1, $2)`, [track, migration.version]);
+        applied.push(id);
+      }
+      current[track] = migrations[migrations.length - 1]?.version ?? 0;
     }
-    return { applied, current: MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0 };
+    return { applied, current };
   });
 }

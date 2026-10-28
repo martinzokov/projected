@@ -1,4 +1,5 @@
 import type { Access, AnyContracts, AnyOperationContract } from "@projected/application";
+import type { Flavour } from "@projected/architecture";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
@@ -14,6 +15,8 @@ export const LOCKFILE_VERSION = 2;
 export interface ContractsLock {
   readonly lockfileVersion: number;
   readonly service: string;
+  /** The flavour the project was created with. Never changes once recorded. */
+  readonly flavour?: Flavour;
   /** `"command enlist-student@1"` → `"sha256-…"` */
   readonly operations: Readonly<Record<string, string>>;
 }
@@ -92,8 +95,9 @@ export function compareLock(lock: ContractsLock, contracts: AnyContracts): LockC
 export function updateLock(
   lock: ContractsLock | undefined,
   contracts: AnyContracts,
-  options: { allowRemoval?: boolean; rebaseline?: boolean } = {},
+  options: { allowRemoval?: boolean; rebaseline?: boolean; flavour?: Flavour } = {},
 ): ContractsLock {
+  const flavour = lock?.flavour ?? options.flavour;
   const current = lockOf(contracts);
   const operations: Record<string, string> = options.rebaseline
     ? { ...(lock?.operations ?? {}), ...current.operations }
@@ -104,6 +108,7 @@ export function updateLock(
   return {
     lockfileVersion: LOCKFILE_VERSION,
     service: contracts.name,
+    ...(flavour === undefined ? {} : { flavour }),
     operations: Object.fromEntries(Object.entries(operations).sort(([a], [b]) => a.localeCompare(b))),
   };
 }

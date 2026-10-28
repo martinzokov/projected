@@ -1,7 +1,7 @@
 {
   "name": "@projected/testing",
   "version": "0.1.0",
-  "description": "Test helpers for projected: given/when/then for decisions, deterministic clocks and ids, and the EventStore conformance suite.",
+  "description": "Test helpers for projected: given/when/then for decisions, deterministic clocks and ids, and conformance suites for every store and transport.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./event-sourced": {
+      "types": "./dist/event-sourced/index.d.ts",
+      "default": "./dist/event-sourced/index.js"
+    },
+    "./state-based": {
+      "types": "./dist/state-based/index.d.ts",
+      "default": "./dist/state-based/index.js"
     }
   },
   "files": [

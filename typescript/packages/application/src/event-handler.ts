@@ -1,6 +1,6 @@
 import { Result, panic, type AnyEventDefinition, type DomainEvent, type z } from "@projected/domain";
 import type { InfrastructureError } from "./errors.js";
-import type { CheckpointStore, EventStore, ExecutionContext, RecordedEvent } from "./ports.js";
+import type { CheckpointStore, EventLog, ExecutionContext, RecordedEvent } from "./ports.js";
 import { noTelemetry, traceCarrier, type Telemetry } from "./telemetry.js";
 
 const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -166,7 +166,7 @@ export function handleTraced(
  */
 export async function catchUp(
   handler: EventHandler,
-  store: EventStore,
+  store: EventLog,
   checkpoints: CheckpointStore,
   options: CatchUpOptions = {},
 ): Promise<Result<CatchUpReport, InfrastructureError>> {

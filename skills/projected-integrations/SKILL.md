@@ -14,7 +14,7 @@ are values, never exceptions.
 
 | Need | Port | Adapter |
 |---|---|---|
-| store events, checkpoints, idempotency | `EventStore`, `CheckpointStore`, `IdempotencyStore` (framework) | `@projected/store-postgres`, `@projected/store-memory` |
+| store aggregates, checkpoints, idempotency | your flavour's `EventStore` or `StateStore`, `CheckpointStore`, `IdempotencyStore` (framework) | `@projected/store-postgres`, `@projected/store-memory` |
 | store read models | your own (`StudentDirectory`) over a `DocumentStore` | your adapter in `adapter/driven/<name>` |
 | current time / ids | `Clock`, `IdGenerator` (framework) | `@projected/runtime`, `@projected/testing` |
 | tracing | `Telemetry` (framework) | `@projected/opentelemetry` |
@@ -136,8 +136,9 @@ runs `consumeCommands(app, transport, { topic })`, which dispatches exactly like
 access rules and idempotency (the message id is the key, so redeliveries never run twice):
 business outcomes are acknowledged, infrastructure errors redelivered, unknown/invalid/refused
 commands and defects dead-lettered to `<topic>.dead-letter`. Events go out with
-`eventRelay(transport, { name, topic })` registered as an event handler — the event store is the
-outbox, so nothing is lost between "stored" and "published".
+`eventRelay(transport, { name, topic })` registered as an event handler — it reads the aggregate
+store's log (the event store itself, or the state store's outbox), so nothing is lost between
+"stored" and "published".
 
 Pick the transport in the composition root: `natsTransport({ servers })` (NATS JetStream, the
 lightweight default) or `kafkaTransport({ brokers })`; `inMemoryTransport()` in tests. The
