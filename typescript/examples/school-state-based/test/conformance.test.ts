@@ -3,8 +3,12 @@ import { conformance } from "@projected/cli";
 import { serve } from "@projected/http/node";
 import { testSchool } from "./school.js";
 
-/** The language-neutral scenarios in spec/conformance, over a real socket: the service as any client sees it. */
-describe("the school, black box", () => {
+/**
+ * The language-neutral scenarios in spec/conformance, over a real socket: the service as any client
+ * sees it. Not under mutation testing, where the HTTP tests already reach the same code and a
+ * server per mutant only makes the run slower.
+ */
+describe.skipIf(process.env["PROJECTED_MUTATION"] !== undefined)("the school, black box", () => {
   it("passes the protocol and school conformance suites", async () => {
     const { handler } = testSchool();
     const server = await serve(handler, { port: 0, hostname: "127.0.0.1" });
