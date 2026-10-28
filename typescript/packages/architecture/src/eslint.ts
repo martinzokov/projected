@@ -1,7 +1,50 @@
 import type { ESLint, Linter } from "eslint";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import tseslint from "typescript-eslint";
+import { businessOperationNames } from "./rules/business-operation-names.js";
 import { drivenAdaptersReturnResults } from "./rules/driven-adapters-return-results.js";
 import { drivenPortsReturnResults } from "./rules/driven-ports-return-results.js";
+import { pastTenseEvents } from "./rules/past-tense-events.js";
+import { singleAggregateCommands } from "./rules/single-aggregate-commands.js";
+
+/** How strictly a design rule is applied. Warnings are reported; `projected check --strict` fails on them. */
+export type RuleLevel = "error" | "warn" | "off";
+
+/**
+ * Design rules: judgement calls about naming and boundaries that a team may relax to warnings
+ * (or switch off) in `projected.json` under `"rules"`. Layer boundaries, determinism, Results and
+ * contract immutability are not on this list: they are never configurable.
+ */
+export interface DesignRules {
+  readonly "business-operation-names"?: RuleLevel;
+  readonly "past-tense-events"?: RuleLevel;
+  /** `allow` lists use case files (relative to the project root) that may write several aggregates. */
+  readonly "single-aggregate-commands"?: RuleLevel | { readonly level?: RuleLevel; readonly allow?: readonly string[] };
+}
+
+export const DESIGN_RULE_DEFAULTS: Readonly<Record<keyof DesignRules, RuleLevel>> = {
+  "business-operation-names": "error",
+  // A heuristic over English words: it can be wrong, so it informs rather than blocks.
+  "past-tense-events": "warn",
+  "single-aggregate-commands": "error",
+};
+
+const levelOf = (rules: DesignRules, rule: keyof DesignRules): RuleLevel => {
+  const setting = rules[rule];
+  return (typeof setting === "object" ? setting.level : setting) ?? DESIGN_RULE_DEFAULTS[rule];
+};
+
+/** The design rules from `projected.json`, when the caller passes none (editor integrations). */
+function designRulesAt(root: string): DesignRules {
+  const path = join(root, "projected.json");
+  if (!existsSync(path)) return {};
+  try {
+    return ((JSON.parse(readFileSync(path, "utf8")) as { rules?: DesignRules }).rules ?? {}) as DesignRules;
+  } catch {
+    return {};
+  }
+}
 
 /** projected's own rules, as an ESLint plugin registered under the `projected/` prefix. */
 export const projectedPlugin: ESLint.Plugin = {
@@ -9,6 +52,9 @@ export const projectedPlugin: ESLint.Plugin = {
   rules: {
     "driven-ports-return-results": drivenPortsReturnResults,
     "driven-adapters-return-results": drivenAdaptersReturnResults,
+    "business-operation-names": businessOperationNames,
+    "past-tense-events": pastTenseEvents,
+    "single-aggregate-commands": singleAggregateCommands,
   },
 };
 
@@ -90,6 +136,8 @@ export interface EslintOptions {
   readonly sourceDirs?: readonly string[];
   /** Where typed rules look for tsconfig files. Defaults to the working directory. */
   readonly tsconfigRootDir?: string;
+  /** Design rule levels. Defaults to the `"rules"` of `projected.json` in `tsconfigRootDir`. */
+  readonly designRules?: DesignRules;
 }
 
 /**
@@ -105,6 +153,10 @@ export interface EslintOptions {
  */
 export function projectedEslint(options: EslintOptions = {}): Linter.Config[] {
   const dirs = options.sourceDirs ?? ["src"];
+  const root = options.tsconfigRootDir ?? process.cwd();
+  const design = options.designRules ?? designRulesAt(root);
+  const several = design["single-aggregate-commands"];
+  const allowedSeveral = typeof several === "object" ? (several.allow ?? []) : [];
   const glob = (layer: string) => dirs.map((dir) => `${dir}/${layer}**/*.{ts,mts,cts,tsx}`);
   const plugins = {
     "@typescript-eslint": tseslint.plugin as unknown as NonNullable<Linter.Config["plugins"]>[string],
@@ -149,9 +201,29 @@ export function projectedEslint(options: EslintOptions = {}): Linter.Config[] {
       files: glob("infrastructure/adapter/driven/"),
       languageOptions: {
         parser: tseslint.parser as Linter.Parser,
-        parserOptions: { projectService: true, tsconfigRootDir: options.tsconfigRootDir ?? process.cwd() },
+        parserOptions: { projectService: true, tsconfigRootDir: root },
       },
       rules: { "projected/driven-adapters-return-results": "error" },
+    },
+    {
+      name: "projected/design/operation-names",
+      files: glob("application/port/driving/"),
+      rules: { "projected/business-operation-names": levelOf(design, "business-operation-names") },
+    },
+    {
+      name: "projected/design/event-names",
+      files: glob("domain/"),
+      rules: { "projected/past-tense-events": levelOf(design, "past-tense-events") },
+    },
+    {
+      name: "projected/design/single-aggregate",
+      files: glob("application/usecase/"),
+      ignores: [...allowedSeveral],
+      languageOptions: {
+        parser: tseslint.parser as Linter.Parser,
+        parserOptions: { projectService: true, tsconfigRootDir: root },
+      },
+      rules: { "projected/single-aggregate-commands": levelOf(design, "single-aggregate-commands") },
     },
     {
       name: "projected/domain",

@@ -1,15 +1,22 @@
+import { clearCaches } from "@typescript-eslint/parser";
 import { cruise, type ICruiseResult } from "dependency-cruiser";
 import { ESLint } from "eslint";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { dependencyCruiserConfig, dependencyCruiserRules, type DependencyCruiserOptions } from "./dependency-cruiser.js";
-import { projectedEslint } from "./eslint.js";
+import { DESIGN_RULE_DEFAULTS, projectedEslint, type DesignRules } from "./eslint.js";
 import { checkLayout, type Violation } from "./layout.js";
 
-export interface CheckOptions extends DependencyCruiserOptions {}
+export interface CheckOptions extends DependencyCruiserOptions {
+  /** Levels for the configurable design rules. Defaults to the project's projected.json. */
+  readonly designRules?: DesignRules;
+}
 
 export interface CheckReport {
+  /** Errors: the check fails while there are any. */
   readonly violations: readonly Violation[];
+  /** Design rules set to "warn": reported, and failing only under `projected check --strict`. */
+  readonly warnings: readonly Violation[];
   /** Files each tool looked at — a check that saw nothing proves nothing. */
   readonly checked: { readonly dependencyCruiser: number; readonly eslint: number };
 }
@@ -25,7 +32,7 @@ export interface CheckReport {
 export async function checkArchitecture(root: string, options: CheckOptions = {}): Promise<CheckReport> {
   const violations: Violation[] = [...checkLayout(root)];
   if (!existsSync(join(root, "src"))) {
-    return { violations, checked: { dependencyCruiser: 0, eslint: 0 } };
+    return { violations, warnings: [], checked: { dependencyCruiser: 0, eslint: 0 } };
   }
 
   const comments = new Map(dependencyCruiserRules(options).map((rule) => [rule.name, rule.comment ?? ""]));
@@ -63,11 +70,19 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
   }
   const cruisedFiles = cruised.modules.filter((module) => module.source.startsWith("src/")).length;
 
-  const eslint = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: projectedEslint({ tsconfigRootDir: root }) });
-  const results = await eslint.lintFiles(["src/**/*.{ts,mts,cts,tsx}"]);
+  const eslint = new ESLint({
+    cwd: root,
+    overrideConfigFile: true,
+    overrideConfig: projectedEslint({ tsconfigRootDir: root, ...(options.designRules === undefined ? {} : { designRules: options.designRules }) }),
+  });
+  const warnings: Violation[] = [];
+  // Typed rules keep a TypeScript program per tsconfig in a process-wide cache; release them, or
+  // a process that checks many projects (a test suite, an agent loop) runs out of memory.
+  const results = await eslint.lintFiles(["src/**/*.{ts,mts,cts,tsx}"]).finally(() => clearCaches());
+  const designRules = new Set(Object.keys(DESIGN_RULE_DEFAULTS).map((rule) => `projected/${rule}`));
   for (const result of results) {
     for (const message of result.messages) {
-      violations.push({
+      (message.severity === 1 && designRules.has(message.ruleId ?? "") ? warnings : violations).push({
         tool: "eslint",
         rule: message.ruleId ?? (message.fatal ? "parse-error" : "inline-config"),
         file: result.filePath.startsWith(root) ? result.filePath.slice(root.length + 1) : result.filePath,
@@ -86,7 +101,7 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
       message: "The check inspected no source files, so it proves nothing. Is src/ empty or excluded?",
     });
   }
-  return { violations, checked };
+  return { violations, warnings, checked };
 }
 
 /** Human-readable report, one violation per line, grouped by file. */

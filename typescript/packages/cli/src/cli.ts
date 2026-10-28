@@ -8,8 +8,9 @@ const USAGE = `projected — keep a projected app honest
 Usage: projected <command> [--root <dir>] [options]
 
 Commands:
-  check                 everything below, as CI runs it (no files are written)
-  arch                  layout, layer tsconfigs, import boundaries and code rules
+  check [--strict]      everything below, as CI runs it (no files are written);
+                        --strict also fails on design-rule warnings
+  arch [--strict]       layout, layer tsconfigs, import boundaries, code and design rules
   openapi [--check]     write openapi.json from the contracts, or verify it is current
   contracts [--update] [--allow-removal]
                         verify published contracts are unchanged, or lock new ones
@@ -27,7 +28,7 @@ Commands:
 
 Configuration: projected.json in the project root. "flavour" ("event-sourced" or
 "state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages,
-securitySchemes and vendors are optional.`;
+securitySchemes, vendors and rules (design rule levels) are optional.`;
 
 /** Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error. */
 export async function run(argv: readonly string[], print: (line: string) => void): Promise<number> {
@@ -44,6 +45,7 @@ export async function run(argv: readonly string[], print: (line: string) => void
         rebaseline: { type: "boolean", default: false },
         spec: { type: "string" },
         "accept-breaking": { type: "boolean", default: false },
+        strict: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -70,14 +72,14 @@ export async function run(argv: readonly string[], print: (line: string) => void
   switch (command) {
     case "check":
       steps.push(
-        () => architecture(project),
+        () => architecture(project, { strict: values.strict }),
         () => contractsLock(project, { update: false, allowRemoval: false }),
         () => openapi(project, { check: true }),
         async () => vendorCheck(project),
       );
       break;
     case "arch":
-      steps.push(() => architecture(project));
+      steps.push(() => architecture(project, { strict: values.strict }));
       break;
     case "openapi":
       steps.push(() => openapi(project, { check: values.check }));

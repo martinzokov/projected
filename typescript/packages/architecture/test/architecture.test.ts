@@ -213,6 +213,89 @@ describe("Results at driven boundaries (ESLint)", () => {
   });
 });
 
+describe("design rules (ESLint, configurable)", () => {
+  const crud = {
+    "src/application/port/driving/crud.ts":
+      `import { defineCommand, z } from "@projected/application";\n` +
+      `export const CreateCounter = defineCommand({ type: "create-counter", input: z.object({}), output: z.object({}) });\n`,
+  };
+  const presentTense = {
+    "src/domain/reset.ts": `import { defineEvent, z } from "@projected/domain/event-sourced";\nexport const CounterReset = defineEvent("CounterReset", { schema: z.object({}) });\nexport const CounterRewind = defineEvent("CounterRewind", { schema: z.object({}) });\n`,
+  };
+  const handler = (body: string) => ({
+    "src/application/usecase/double.ts":
+      `import { Result, type AggregateRepository, type CommandHandler } from "@projected/application/event-sourced";\n` +
+      `import { Counter, increment } from "../../domain/counter.js";\n` +
+      `import type { Increment } from "../port/driving/contracts.js";\n` +
+      `export const incrementTwice =\n` +
+      `  (deps: { counters: AggregateRepository<typeof Counter> }): CommandHandler<typeof Increment> =>\n` +
+      `  async ({ counterId }, context) => {\n${body}\n  };\n`,
+  });
+  const twoWrites = handler(
+    `    await deps.counters.execute(counterId, (v) => increment(v, 10), context);\n` +
+      `    const second = await deps.counters.execute(counterId + "-copy", (v) => increment(v, 10), context);\n` +
+      `    return second.map((executed) => ({ value: executed.state }));`,
+  );
+  const loop = handler(
+    `    for (const id of [counterId, counterId + "-copy"]) await deps.counters.execute(id, (v) => increment(v, 10), context);\n` +
+      `    return Result.ok({ value: 0 });`,
+  );
+
+  it("rejects CRUD operation names by default", async () => {
+    const report = await checkArchitecture(fixture(crud));
+
+    expect(rules(report.violations)).toContain("eslint/projected/business-operation-names");
+  });
+
+  it("warns about event names without a past tense by default, accepting irregular ones", async () => {
+    const report = await checkArchitecture(fixture(presentTense));
+
+    expect(report.warnings.map((w) => w.message)).toEqual([expect.stringContaining('"CounterRewind" has no past tense')]);
+    expect(report.violations).toEqual([]);
+  });
+
+  it("rejects a command handler that writes two aggregates", async () => {
+    const report = await checkArchitecture(fixture(twoWrites));
+
+    expect(rules(report.violations)).toContain("eslint/projected/single-aggregate-commands");
+  });
+
+  it("rejects a command handler that writes aggregates in a loop", async () => {
+    const report = await checkArchitecture(fixture(loop));
+
+    expect(report.violations.map((v) => v.message)).toEqual([expect.stringContaining("writes aggregates in a loop")]);
+  });
+
+  it("can turn a rule into a warning", async () => {
+    const report = await checkArchitecture(fixture(crud), { designRules: { "business-operation-names": "warn" } });
+
+    expect(report.violations).toEqual([]);
+    expect(rules(report.warnings)).toEqual(["eslint/projected/business-operation-names"]);
+  });
+
+  it("can switch a rule off", async () => {
+    const report = await checkArchitecture(fixture(presentTense), { designRules: { "past-tense-events": "off" } });
+
+    expect([report.violations, report.warnings]).toEqual([[], []]);
+  });
+
+  it("lets listed handlers write several aggregates", async () => {
+    const report = await checkArchitecture(fixture(twoWrites), {
+      designRules: { "single-aggregate-commands": { allow: ["src/application/usecase/double.ts"] } },
+    });
+
+    expect(report.violations).toEqual([]);
+  });
+
+  it("reads the levels from projected.json when none are passed", async () => {
+    const report = await checkArchitecture(
+      fixture({ ...crud, "projected.json": JSON.stringify({ flavour: "event-sourced", rules: { "business-operation-names": "off" } }) }),
+    );
+
+    expect(report.violations).toEqual([]);
+  });
+});
+
 describe("code rules (ESLint)", () => {
   const cases: Array<[string, Edit, string]> = [
     ["throwing in the domain", { "src/domain/x.ts": `export const f = (): never => { throw new Error("no"); };\n` }, "eslint/no-restricted-syntax"],

@@ -11,4 +11,11 @@ export {
   type DependencyCruiserOptions,
   type Flavour,
 } from "./dependency-cruiser.js";
-export { projectedEslint, projectedPlugin, type EslintOptions } from "./eslint.js";
+export {
+  DESIGN_RULE_DEFAULTS,
+  projectedEslint,
+  projectedPlugin,
+  type DesignRules,
+  type EslintOptions,
+  type RuleLevel,
+} from "./eslint.js";

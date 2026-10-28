@@ -149,6 +149,11 @@ user just *decide* to do?" — that is the command.
 | store a read model | a `DocumentStore` collection behind your own port (`projected-integrations`) |
 | add a span or log a trace id | nothing: operations, aggregates and event handlers are already traced |
 
+A few **design rules** — business operation names, past-tense events, one aggregate per command —
+can be set to `"warn"` or `"off"` under `"rules"` in `projected.json`, and a handler that must
+write several aggregates can be listed under `allow`. That is a team decision: do not change
+those settings to get your own change through; fix the name or the boundary instead.
+
 **Never** "fix" a failing check by loosening it: do not add `lib`/`types`/`references` to a
 layer's `tsconfig.json`, do not add `eslint-disable` or `@ts-ignore` (they are ignored and
 reported), do not edit `contracts.lock.json` entries or `openapi.json` by hand. `projected check`
@@ -158,7 +163,8 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 
 | Command | Does |
 |---|---|
-| `projected check` | architecture + contract lock + OpenAPI freshness, as CI runs it |
+| `projected check` | architecture + design rules + contract lock + OpenAPI and vendor freshness, as CI runs it |
+| `projected check --strict` | the same, also failing on design-rule warnings |
 | `projected arch` | layout, layer tsconfigs, import boundaries, code rules |
 | `projected openapi` | regenerate `openapi.json` from the contracts |
 | `projected contracts --update` | lock new operations (refuses changes to published ones) |

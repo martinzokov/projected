@@ -69,6 +69,29 @@ From `projectedEslint()` in `@projected/architecture/eslint`:
 | all of `src/` | `@typescript-eslint/triple-slash-reference` | `/// <reference types="node" />` and friends |
 | all of `src/` | `linterOptions.noInlineConfig` | `eslint-disable` comments — ignored *and* reported |
 
+## Design rules (configurable)
+
+Judgement calls about naming and boundaries. Unlike everything above, a team may relax them, in
+`projected.json`, to `"warn"` (reported, failing only `projected check --strict`) or `"off"`:
+
+```json
+{
+  "rules": {
+    "past-tense-events": "error",
+    "single-aggregate-commands": { "level": "error", "allow": ["src/application/usecase/transfer-money.ts"] }
+  }
+}
+```
+
+| Rule | Default | Forbids |
+|---|---|---|
+| `projected/business-operation-names` | error | a command or query type starting with a CRUD verb (`create-`, `update-`, `delete-`, `set-`, `patch-`, `get-`, `put-`, `insert-`, `upsert-`, `modify-`, `save-`) |
+| `projected/past-tense-events` | warn | an event type with no past-tense word in it (`StudentEnlisted` and `StudentLeftSchool` pass, `CounterRewind` does not) — a heuristic, hence a warning |
+| `projected/single-aggregate-commands` (type-checked) | error | a use case calling `execute` on aggregate repositories more than once, or inside a loop — unless its file is listed under `allow` |
+
+Unknown rule names and levels in `projected.json` are rejected, naming the configurable rules:
+layer boundaries, determinism, Results and contract immutability cannot be relaxed.
+
 ## Layout and the guard rails themselves
 
 `checkLayout()`:

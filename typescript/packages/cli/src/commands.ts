@@ -14,17 +14,27 @@ export interface CommandResult {
 const pass = (...lines: string[]): CommandResult => ({ ok: true, lines });
 const failWith = (...lines: string[]): CommandResult => ({ ok: false, lines });
 
-export async function architecture(project: Project): Promise<CommandResult> {
+export async function architecture(project: Project, options: { strict?: boolean } = {}): Promise<CommandResult> {
   const report = await checkArchitecture(project.root, {
     flavour: project.flavour,
+    designRules: project.config.rules ?? {},
     ...(project.config.applicationPackages === undefined ? {} : { applicationPackages: project.config.applicationPackages }),
     ...(project.config.domainPackages === undefined ? {} : { domainPackages: project.config.domainPackages }),
   });
   const summary = `checked ${report.checked.dependencyCruiser} modules (imports) and ${report.checked.eslint} files (code rules)`;
-  if (report.violations.length === 0) return pass(`architecture (${project.flavour}): ok — ${summary}`);
+  const warnings =
+    report.warnings.length === 0
+      ? []
+      : [
+          `architecture: ${report.warnings.length} warning(s)${options.strict ? " — failing: --strict" : " (set the rule to \"error\" in projected.json, or run with --strict, to fail on them)"}`,
+          formatViolations(report.warnings),
+        ];
+  const failing = report.violations.length > 0 || (options.strict === true && report.warnings.length > 0);
+  if (!failing) return pass(`architecture (${project.flavour}): ok — ${summary}`, ...warnings);
   return failWith(
     `architecture (${project.flavour}): ${report.violations.length} violation(s) — ${summary}`,
-    formatViolations(report.violations),
+    ...(report.violations.length === 0 ? [] : [formatViolations(report.violations)]),
+    ...warnings,
   );
 }
 

@@ -1,5 +1,5 @@
 import type { AnyContracts } from "@projected/application";
-import { FLAVOURS, type Flavour } from "@projected/architecture";
+import { DESIGN_RULE_DEFAULTS, FLAVOURS, type DesignRules, type Flavour } from "@projected/architecture";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,6 +36,8 @@ export interface ProjectConfig {
   readonly securitySchemes?: Readonly<Record<string, unknown>>;
   /** Third-party APIs with generated clients, managed by `projected vendor`. */
   readonly vendors?: Readonly<Record<string, VendorConfig>>;
+  /** Levels (`"error"`, `"warn"`, `"off"`) for the configurable design rules. */
+  readonly rules?: DesignRules;
 }
 
 export interface Project {
@@ -64,6 +66,7 @@ export function loadProject(rootArgument: string): Project {
   const version = existsSync(packagePath)
     ? ((JSON.parse(readFileSync(packagePath, "utf8")) as { version?: string }).version ?? "0.0.0")
     : "0.0.0";
+  validateRules(configPath, config.rules ?? {});
   return {
     root,
     config,
@@ -72,6 +75,25 @@ export function loadProject(rootArgument: string): Project {
     openapiPath: join(root, config.openapi ?? "openapi.json"),
     lockPath: join(root, config.lock ?? "contracts.lock.json"),
   };
+}
+
+const LEVELS = ["error", "warn", "off"];
+
+function validateRules(configPath: string, rules: DesignRules) {
+  for (const [rule, setting] of Object.entries(rules) as Array<[string, unknown]>) {
+    if (!(rule in DESIGN_RULE_DEFAULTS)) {
+      throw new Error(
+        `${configPath}: unknown rule "${rule}" under "rules". Configurable rules: ${Object.keys(DESIGN_RULE_DEFAULTS).join(", ")}. ` +
+          "Layer boundaries, determinism, Results and contract immutability cannot be configured.",
+      );
+    }
+    const level = typeof setting === "object" && setting !== null ? (setting as { level?: unknown }).level ?? "error" : setting;
+    if (!LEVELS.includes(String(level))) throw new Error(`${configPath}: rule "${rule}" must be "error", "warn" or "off", found ${JSON.stringify(level)}.`);
+    const allow = typeof setting === "object" && setting !== null ? (setting as { allow?: unknown }).allow : undefined;
+    if (allow !== undefined && (rule !== "single-aggregate-commands" || !Array.isArray(allow))) {
+      throw new Error(`${configPath}: only "single-aggregate-commands" takes "allow", a list of use case files.`);
+    }
+  }
 }
 
 const isContracts = (value: unknown): value is AnyContracts =>

@@ -161,6 +161,9 @@ importers:
 
   packages/architecture:
     dependencies:
+      '@typescript-eslint/parser':
+        specifier: ^8.72.1
+        version: 8.72.1(eslint@10.13.0)(typescript@6.0.3)
       dependency-cruiser:
         specifier: ^18.7.0
         version: 18.7.0
