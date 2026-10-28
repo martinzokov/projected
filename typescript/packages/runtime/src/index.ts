@@ -68,3 +68,4 @@ export function startPolling<C extends AnyContracts>(app: Application<C>, option
 export { monitorBacklog, type BacklogMonitor, type BacklogMonitorOptions } from "./backlog.js";
 export { shutdownGracefully, type Intake, type Shutdown, type ShutdownOptions } from "./shutdown.js";
 export { prepareSchema, type PrepareSchemaOptions } from "./schema.js";
+export { runMigrations, type MigrationRun } from "./migrate.js";

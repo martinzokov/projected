@@ -147,7 +147,10 @@ once per key and principal:
 5. Protocol failures are not stored: the request may be retried with the same key.
 
 Keys are scoped to the principal, so one caller can never receive another caller's outcome.
-Stored outcomes SHOULD be kept at least 24 hours. Queries ignore idempotency keys — they are
+Every anonymous caller shares one scope, so there the key alone keeps outcomes apart: a key from
+an anonymous caller MUST be at least 16 characters (a random UUID is the intended key), and a
+shorter one fails with `invalid-input` before the command runs. Stored outcomes SHOULD be kept
+at least 24 hours. Queries ignore idempotency keys — they are
 safe to repeat.
 
 ### 2.3 Trace context

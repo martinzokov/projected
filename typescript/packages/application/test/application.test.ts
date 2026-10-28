@@ -9,6 +9,7 @@ import {
   createApplication,
   defineCommand,
   defineContracts,
+  defineError,
   defineEventHandler,
   defineQuery,
   inProcessService,
@@ -53,6 +54,23 @@ function ticketApp(options: { store?: EventStore; onDefect?: (defect: OperationD
   });
   return { app, store, titles };
 }
+
+describe("framework errors", () => {
+  it("reserve every tag of their own, so no business error can be mistaken for one", async () => {
+    const exported = [
+      ...Object.values(await import("@projected/application/event-sourced")),
+      ...Object.values(await import("@projected/application/state-based")),
+    ];
+    type ErrorClass = new (props: object) => Error & { _tag: string };
+    const errorClasses = exported.filter(
+      (value) => typeof value === "function" && value.prototype instanceof Error && !("tag" in value),
+    ) as unknown as ErrorClass[];
+    const tags = [...new Set(errorClasses.map((ErrorClass) => new ErrorClass({ message: "" })._tag))];
+
+    expect(tags).toContain("UnknownTask");
+    for (const tag of tags) expect(() => defineError(tag), tag).toThrow(/reserved for projected's own errors/);
+  });
+});
 
 describe("contracts", () => {
   it("derive a key from type and version", () => {

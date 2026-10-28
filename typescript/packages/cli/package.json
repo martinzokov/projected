@@ -23,6 +23,7 @@
     "@projected/application": "workspace:*",
     "@projected/architecture": "workspace:*",
     "@projected/http": "workspace:*",
+    "@projected/runtime": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "tsx": "^4.23.15",

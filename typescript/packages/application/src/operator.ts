@@ -1,11 +1,10 @@
 import { panic, type Result, type z } from "@projected/domain";
 import type { InfrastructureError, InvalidInput, OperationDefect } from "./errors.js";
 import type { ExecutionContext } from "./ports.js";
+import { KEBAB_CASE, type MaybePromise } from "./naming.js";
 
 /** The permission every operator task requires. Grant it to operators, never to callers. */
 export const OPERATE = "projected:operate";
-
-type MaybePromise<T> = T | Promise<T>;
 
 /**
  * A maintenance task an operator runs on a live service — rebuild a projection, replay dead
@@ -22,8 +21,6 @@ export interface OperatorTask {
   /** The outcome is shown to the operator as JSON. */
   run(input: unknown, context: ExecutionContext): Promise<Result<unknown, InfrastructureError | InvalidInput | OperationDefect>>;
 }
-
-const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /** Define an {@link OperatorTask}, its input checked against `input` before it runs. */
 export function defineOperatorTask<S extends z.ZodType>(task: {

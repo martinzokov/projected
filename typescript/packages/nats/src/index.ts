@@ -8,7 +8,15 @@
  * duplicate window.
  */
 import { DependencyUnavailable, Result } from "@projected/application";
-import { DEAD_LETTER_REASON_HEADER, REPLAY_HEADER, deadLetterTopic, type Disposition, type MessageTransport, type Subscription } from "@projected/messaging";
+import {
+  DEAD_LETTER_REASON_HEADER,
+  REPLAY_HEADER,
+  deadLetterTopic,
+  withTimeout,
+  type Disposition,
+  type MessageTransport,
+  type Subscription,
+} from "@projected/messaging";
 import { AckPolicy, DeliverPolicy, jetstream, jetstreamManager, type JsMsg } from "@nats-io/jetstream";
 import { connect, headers as natsHeaders, nanos, type NatsConnection } from "@nats-io/transport-node";
 
@@ -39,22 +47,6 @@ const MESSAGE_ID = "projected-message-id";
 const KEY = "projected-key";
 /** NATS consumer names may not contain `.`, `*`, `>` or whitespace. */
 const consumerName = (group: string, topic: string) => `${group}__${topic}`.replace(/[^A-Za-z0-9_-]/g, "_");
-
-/** `work`, or a rejection once `ms` have passed without an answer. */
-const within = <T>(ms: number, work: Promise<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
-    work.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 
 /** Create a NATS JetStream {@link MessageTransport}. Call `close()` on shutdown. */
 export function natsTransport(options: NatsTransportOptions): MessageTransport & { close(): Promise<void> } {
@@ -96,7 +88,7 @@ export function natsTransport(options: NatsTransportOptions): MessageTransport &
   return {
     ping: async () => {
       try {
-        await within(pingTimeoutMs, connection().then((nc) => nc.flush()));
+        await withTimeout(pingTimeoutMs, connection().then((nc) => nc.flush()));
         return Result.ok(undefined);
       } catch (cause) {
         return Result.err(new DependencyUnavailable({ dependency: "nats", message: `nats: the server did not answer (${String(cause)})`, cause }));
@@ -120,17 +112,24 @@ export function natsTransport(options: NatsTransportOptions): MessageTransport &
       const nc = await connection();
       const jsm = await jetstreamManager(nc);
       const durable = consumerName(subscribeOptions.group ?? "default", topic);
-      try {
-        await jsm.consumers.info(streamName, durable);
-      } catch {
+      const settings = { ack_wait: nanos(options.ackWaitMs ?? 30_000), max_ack_pending: options.maxInFlight ?? 1 };
+      const existing = await jsm.consumers.info(streamName, durable).catch(() => undefined);
+      if (existing === undefined) {
         await jsm.consumers.add(streamName, {
           durable_name: durable,
           filter_subject: subjectOf(topic),
           ack_policy: AckPolicy.Explicit,
           deliver_policy: DeliverPolicy.All,
-          ack_wait: nanos(options.ackWaitMs ?? 30_000),
-          max_ack_pending: options.maxInFlight ?? 1,
+          ...settings,
         });
+      } else if (existing.config.filter_subject !== subjectOf(topic)) {
+        // Names are sanitised, so `a.b` and `a_b` meet here: never read another topic's messages.
+        throw new Error(
+          `nats: consumer ${durable} already follows ${existing.config.filter_subject ?? "every subject"}, not ${subjectOf(topic)}. ` +
+            "Give this subscription its own group.",
+        );
+      } else if (existing.config.ack_wait !== settings.ack_wait || existing.config.max_ack_pending !== settings.max_ack_pending) {
+        await jsm.consumers.update(streamName, durable, settings);
       }
       const consumer = await jetstream(nc).consumers.get(streamName, durable);
       const messages = await consumer.consume();

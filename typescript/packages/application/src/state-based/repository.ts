@@ -3,6 +3,7 @@ import { eventMetadataFrom } from "../event-metadata.js";
 import { ConcurrencyConflict, type DependencyUnavailable } from "../errors.js";
 import type { ExecutionContext, NewEvent } from "../ports.js";
 import type { StateStore } from "./ports.js";
+import { retryOnConflict } from "../retry.js";
 import { noTelemetry, type Telemetry } from "../telemetry.js";
 
 /** An aggregate's state as loaded from the store. */
@@ -41,7 +42,6 @@ export interface AggregateRepositoryOptions {
   /** Records a span per load and per decision. Defaults to none. */
   readonly telemetry?: Telemetry;
 }
-
 
 /** An {@link AggregateRepository} over any {@link StateStore}. */
 export function aggregateRepository<A extends AnyAggregate>(
@@ -102,18 +102,8 @@ export function aggregateRepository<A extends AnyAggregate>(
     aggregate,
     load,
     execute: (id, decide, context) =>
-      telemetry.span(`execute ${aggregate.name}`, { attributes: { "projected.aggregate.key": aggregate.key(id) } }, async (span) => {
-        let tries = 1;
-        let outcome = await attempt(id, decide, context);
-        for (; tries < maxAttempts && outcome.isErr() && ConcurrencyConflict.is(outcome.error); tries++) {
-          outcome = await attempt(id, decide, context);
-        }
-        span.setAttributes({
-          "projected.attempts": tries,
-          "projected.events": outcome.isOk() ? outcome.value.events.length : 0,
-        });
-        if (outcome.isErr() && ConcurrencyConflict.is(outcome.error)) span.fail(outcome.error.message);
-        return outcome;
-      }),
+      telemetry.span(`execute ${aggregate.name}`, { attributes: { "projected.aggregate.key": aggregate.key(id) } }, (span) =>
+        retryOnConflict(() => attempt(id, decide, context), maxAttempts, span),
+      ),
   };
 }

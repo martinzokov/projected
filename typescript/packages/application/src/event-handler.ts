@@ -2,10 +2,8 @@ import { Result, panic, type AnyEventDefinition, type DomainEvent, type z } from
 import { OperationDefect, defectReason, type InfrastructureError } from "./errors.js";
 import type { CheckpointStore, EventLog, ExecutionContext, RecordedEvent } from "./ports.js";
 import { noTelemetry, traceCarrier, type Telemetry } from "./telemetry.js";
+import { KEBAB_CASE, type MaybePromise } from "./naming.js";
 
-const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-
-type MaybePromise<T> = T | Promise<T>;
 type DefinitionFor<Events extends readonly AnyEventDefinition[], Type> = Extract<Events[number], { readonly type: Type }>;
 
 /**

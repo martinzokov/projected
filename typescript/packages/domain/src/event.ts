@@ -1,8 +1,7 @@
 import { Result, TaggedError, panic } from "better-result";
 import type { z } from "zod";
 import { assertJsonCompatible } from "./json.js";
-
-const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
+import { PASCAL_CASE } from "./naming.js";
 
 /** A domain event: a fact that happened, named in the past tense. Immutable. */
 export interface DomainEvent<Type extends string = string, Data = unknown> {

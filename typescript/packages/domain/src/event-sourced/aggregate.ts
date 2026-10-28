@@ -8,8 +8,7 @@ import {
   type EventOfDefinition,
   type SerializedEvent,
 } from "../event.js";
-
-const CAMEL_CASE = /^[a-z][a-zA-Z0-9]*$/;
+import { CAMEL_CASE } from "../naming.js";
 
 type DataFor<D, Type extends string> = D extends EventDefinition<Type, infer S> ? z.output<S> : never;
 

@@ -125,8 +125,10 @@ pnpm build && pnpm start   # in memory; DATABASE_URL=postgres://… for PostgreS
 \`\`\`
 
 Against PostgreSQL the service creates its tables at start. In production, make that a deploy
-step: run \`pnpm migrate\` (\`projected migrate\`) before each rollout, and start the service with
-\`MIGRATE_ON_START=false\` so it only checks its tables are current and needs no right to change them.
+step: run \`pnpm migrate\` (\`projected migrate\`) before each rollout — or, from a built image
+without development tools, \`node .tsbuild/infrastructure/config/migrate.js\` — and start the
+service with \`MIGRATE_ON_START=false\` so it only checks its tables are current and needs no
+right to change them.
 
 Grow it with the generators, then fill in the business rules they leave as stubs:
 
@@ -255,6 +257,20 @@ export function migrations(env: NodeJS.ProcessEnv = process.env) {
     },
   };
 }
+`,
+    "src/infrastructure/config/migrate.ts": `import { runMigrations } from "@projected/runtime";
+import { migrations } from "./migrations.js";
+
+/**
+ * \`projected migrate\` from the built service — \`node .tsbuild/infrastructure/config/migrate.js\`,
+ * with \`--check\` to only list what is pending — for a release job whose image carries no
+ * development tools.
+ */
+const { migrators, close } = migrations();
+const run = await runMigrations(migrators, { check: process.argv.includes("--check") });
+await close();
+run.lines.forEach((line) => console.log(line));
+process.exitCode = run.ok ? 0 : 1;
 `,
     "src/infrastructure/config/environment.ts": `import { inMemoryCheckpointStore, inMemoryDocumentStore, inMemoryIdempotencyStore, ${s.memory} } from "@projected/store-memory/${flavour}";
 import { fromPool, postgresReadiness, postgresStores } from "@projected/store-postgres/${flavour}";

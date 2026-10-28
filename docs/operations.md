@@ -25,6 +25,11 @@ DATABASE_URL=… projected migrate              # the release job, before any ne
 MIGRATE_ON_START=false DATABASE_URL=… pnpm start  # every instance of the new version
 ```
 
+`projected migrate` loads the module from source, so it needs the CLI and its tools. From an
+image of the built service, run the same thing without them:
+`node .tsbuild/infrastructure/config/migrate.js` (with `--check` to only list what is pending).
+Both print the same report and exit 1 on a failure or, with `--check`, on anything pending.
+
 In production, prefer the deploy step:
 
 - a migration that fails stops the rollout, rather than every new instance failing to start;

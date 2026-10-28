@@ -91,9 +91,7 @@ export function migrations() {
     const code = await run(["migrate", "--root", root], (line) => lines.push(line));
 
     expect(code).toBe(1);
-    expect(lines).toEqual([
-      "error: src/infrastructure/config/migrations.ts found nothing to migrate. Point it at the database: a generated service reads DATABASE_URL.",
-    ]);
+    expect(lines).toEqual(["migrate: nothing to migrate — point the migrations module at the database (a generated service reads DATABASE_URL)"]);
     expect(existsSync(join(root, "closed"))).toBe(true);
   });
 });

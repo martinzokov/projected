@@ -2,8 +2,7 @@ import { Result, TaggedError, panic } from "better-result";
 import type { z } from "zod";
 import type { AnyEventDefinition, EventMigration, EventOfDefinition, SerializedEvent } from "../event.js";
 import { assertJsonCompatible } from "../json.js";
-
-const CAMEL_CASE = /^[a-z][a-zA-Z0-9]*$/;
+import { CAMEL_CASE } from "../naming.js";
 
 /** A stored state document, as it comes out of a state store. */
 export interface SerializedState {

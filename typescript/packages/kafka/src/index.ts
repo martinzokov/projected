@@ -9,7 +9,16 @@
  * order. After `maxAttempts` it goes to `<topic>.dead-letter` and the partition continues.
  */
 import { DependencyUnavailable, Result } from "@projected/application";
-import { DEAD_LETTER_REASON_HEADER, deadLetterTopic, type Disposition, type Message, type MessageTransport, type Subscription } from "@projected/messaging";
+import {
+  DEAD_LETTER_REASON_HEADER,
+  deadLetterTopic,
+  sleep,
+  withTimeout,
+  type Disposition,
+  type Message,
+  type MessageTransport,
+  type Subscription,
+} from "@projected/messaging";
 import { Admin, Consumer, Producer, stringDeserializers, stringSerializers } from "@platformatic/kafka";
 
 export interface KafkaTransportOptions {
@@ -32,23 +41,6 @@ export interface KafkaTransportOptions {
 }
 
 const MESSAGE_ID = "projected-message-id";
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** `work`, or a rejection once `ms` have passed without an answer. */
-const within = <T>(ms: number, work: Promise<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
-    work.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 
 /** Create a Kafka-backed {@link MessageTransport}. Call `close()` on shutdown. */
 export function kafkaTransport(options: KafkaTransportOptions): MessageTransport & { close(): Promise<void> } {
@@ -94,7 +86,7 @@ export function kafkaTransport(options: KafkaTransportOptions): MessageTransport
   const transport: MessageTransport & { close(): Promise<void> } = {
     ping: async () => {
       try {
-        await within(pingTimeoutMs, producerOf().metadata({ topics: [], forceUpdate: true }));
+        await withTimeout(pingTimeoutMs, producerOf().metadata({ topics: [], forceUpdate: true }));
         return Result.ok(undefined);
       } catch (cause) {
         return Result.err(new DependencyUnavailable({ dependency: "kafka", message: `kafka: no broker answered (${String(cause)})`, cause }));

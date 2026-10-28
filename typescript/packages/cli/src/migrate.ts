@@ -1,6 +1,7 @@
 import type { SchemaMigrator } from "@projected/application";
+import { runMigrations } from "@projected/runtime";
 import { existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tsImport } from "tsx/esm/api";
 import type { CommandResult } from "./commands.js";
@@ -35,33 +36,15 @@ export async function loadMigrations(project: Project, env: NodeJS.ProcessEnv = 
   if (typeof module.migrations !== "function") throw new Error(`${modulePath} must export a function \`migrations(env)\`.`);
   const migrations: unknown = await (module.migrations as (env: NodeJS.ProcessEnv) => unknown)(env);
   if (!isMigrations(migrations)) throw new Error(`\`migrations(env)\` in ${modulePath} must return { migrators: SchemaMigrator[], close? }.`);
-  if (migrations.migrators.length === 0) {
-    await migrations.close?.();
-    throw new Error(
-      `${relative(project.root, modulePath)} found nothing to migrate. Point it at the database: a generated service reads DATABASE_URL.`,
-    );
-  }
   return migrations;
 }
 
 /**
  * `projected migrate`: bring the service's tables up to date as a deploy step, before the new
  * version starts — a failed migration then stops the rollout instead of every new instance, and
- * the running service's database role needs no right to change tables. Migrators run in order and
- * the first failure stops the rest. With `check`, nothing changes and pending changes fail.
+ * the running service's database role needs no right to change tables. With `check`, nothing
+ * changes and pending changes fail. The same run as a built service's `migrate.js`.
  */
 export async function migrate(migrations: Migrations, options: { readonly check?: boolean } = {}): Promise<CommandResult> {
-  const lines: string[] = [];
-  let pending = 0;
-  for (const migrator of migrations.migrators) {
-    const outcome = options.check ? await migrator.pending() : await migrator.apply();
-    if (outcome.isErr()) return { ok: false, lines: [...lines, `${migrator.name}: ${outcome.error.message}`] };
-    const changes = outcome.value;
-    pending += changes.length;
-    lines.push(`${migrator.name}: ${changes.length === 0 ? "up to date" : `${options.check ? "pending" : "applied"} ${changes.join(", ")}`}`);
-  }
-  if (options.check && pending > 0) {
-    return { ok: false, lines: [...lines, `migrate: ${pending} change(s) pending — run \`projected migrate\` before starting this version`] };
-  }
-  return { ok: true, lines };
+  return runMigrations(migrations.migrators, options);
 }

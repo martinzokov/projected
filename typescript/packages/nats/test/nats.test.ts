@@ -45,6 +45,16 @@ const suite = servers === undefined ? describe.skip : describe;
 suite("nats", () => {
   messageTransportConformance("nats", { create: () => ({ transport: create() }), maxAttempts: 3, durable: true });
 
+  it("refuses to share a consumer between two topics whose names sanitise alike", async () => {
+    const transport = create();
+    const subscription = await transport.subscribe("school.events", async () => "ack", { group: "relay" });
+
+    const clash = transport.subscribe("school_events", async () => "ack", { group: "relay" });
+
+    await expect(clash).rejects.toThrow(/consumer relay__school_events already follows .*school\.events, not .*school_events/);
+    await subscription.close();
+  });
+
   it("carries queued commands from one service to another", async () => {
     const transport = create();
     const Notify = defineCommand({ type: "notify-parent", input: z.object({ studentId: z.string() }), output: z.object({}) });

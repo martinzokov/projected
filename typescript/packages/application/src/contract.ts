@@ -1,6 +1,5 @@
 import { assertJsonCompatible, panic, z, type AnyBusinessErrorClass } from "@projected/domain";
-
-const KEBAB_CASE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+import { KEBAB_CASE } from "./naming.js";
 
 export type OperationKind = "command" | "query";
 

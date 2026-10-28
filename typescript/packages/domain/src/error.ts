@@ -1,11 +1,10 @@
 import { TaggedError, panic, type TaggedErrorInstance } from "better-result";
 import { z } from "zod";
 import { assertJsonCompatible } from "./json.js";
+import { PASCAL_CASE } from "./naming.js";
 
 /** Property names a business error's schema may not declare: `Error` and `TaggedError` own them. */
 const RESERVED_ERROR_PROPERTIES = ["_tag", "name", "message", "stack", "cause", "match", "toJSON"];
-
-const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
 
 /** Tags of the framework's own errors. A business error reusing one would be misrouted by transports. */
 const RESERVED_TAGS = [
@@ -23,6 +22,7 @@ const RESERVED_TAGS = [
   "Forbidden",
   "RequestInProgress",
   "IdempotencyKeyReused",
+  "UnknownTask",
 ];
 
 /** The instance type of an error created by {@link defineError}. */

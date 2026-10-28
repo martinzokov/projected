@@ -12,6 +12,7 @@ import {
   z,
   type CommandHandler,
   type IdempotencyStore,
+  type Principal,
 } from "@projected/application/event-sourced";
 import { inMemoryCheckpointStore, inMemoryEventStore, inMemoryIdempotencyStore } from "@projected/store-memory/event-sourced";
 import { principal, recordingTelemetry, sequentialIds } from "@projected/testing/event-sourced";
@@ -103,8 +104,14 @@ describe("duplicate command protection", () => {
       queries: { "balance@1": () => Result.ok({ total: charges.reduce((a, b) => a + b, 0) }) },
       idempotency: { store: options.store ?? inMemoryIdempotencyStore() },
     });
-    const send = (amount: number, idempotencyKey?: string, who = reader) =>
-      app.dispatch({ kind: "command", type: "charge-card", version: 1, input: { amount }, metadata: { idempotencyKey, principal: who } });
+    const send = (amount: number, idempotencyKey?: string, who: Principal | "anonymous" = reader) =>
+      app.dispatch({
+        kind: "command",
+        type: "charge-card",
+        version: 1,
+        input: { amount },
+        metadata: { idempotencyKey, ...(who === "anonymous" ? {} : { principal: who }) },
+      });
     return { app, charges, send };
   }
 
@@ -180,6 +187,26 @@ describe("duplicate command protection", () => {
     expect(charges).toEqual([10, 10]);
   });
 
+  it("refuses a short key from an anonymous caller, whose keys all share one scope", async () => {
+    const { charges, send } = payments();
+
+    const refused = await send(10, "key-1", "anonymous");
+
+    expect(refused.isErr() && refused.error._tag).toBe("InvalidInput");
+    expect(refused.isErr() && refused.error.message).toMatch(/at least 16 characters: send a random UUID/);
+    expect(charges).toEqual([]);
+  });
+
+  it("protects an anonymous caller's command under a key too long to guess", async () => {
+    const { charges, send } = payments();
+    const key = "6f0c7e0a-2b1d-4c5e-9a3f-0d8e7b6a5c4d";
+
+    await send(10, key, "anonymous");
+    await send(10, key, "anonymous");
+
+    expect(charges).toEqual([10]);
+  });
+
   it("ignores keys on queries, which are safe to repeat", async () => {
     const claim = vi.fn();
     const { app } = payments({ store: { ...inMemoryIdempotencyStore(), claim } });
@@ -240,6 +267,16 @@ describe("tracing", () => {
 
     expect(telemetry.named("command open-ticket@1").map((span) => span.attributes["projected.outcome"])).toEqual(["ok", "error"]);
     expect(telemetry.named("command open-ticket@1")[1]?.attributes["projected.error.type"]).toBe("TicketAlreadyOpened");
+  });
+
+  it("names the message on the span, including an id generated because the transport sent none", async () => {
+    const { app, telemetry } = tracedTickets();
+
+    await app.execute(OpenTicket, { ticketId: "t-1", title: "Printer" }, { principal: admin });
+
+    const span = telemetry.named("command open-ticket@1")[0];
+    expect(span?.attributes["projected.message_id"]).toBe("msg-1");
+    expect(span?.attributes["projected.correlation_id"]).toBe("msg-1");
   });
 
   it("marks protocol failures as failed spans", async () => {

@@ -1,4 +1,5 @@
 import { Result, defineOperatorTask, z, type DependencyUnavailable, type OperatorTask } from "@projected/application";
+import { sleep } from "./timing.js";
 import { DEAD_LETTER_REASON_HEADER, REPLAY_HEADER, deadLetterTopic, type MessageTransport } from "./transport.js";
 
 export interface DeadLetterReplayOptions {
@@ -14,8 +15,6 @@ export interface DeadLetterReplayOptions {
   /** Finish after this long, whatever is still arriving; the rest waits for the next run. Defaults to 60 s. */
   readonly maxMs?: number;
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * The `replay-dead-letters` operator task: publish a topic's dead letters back to the topic, under

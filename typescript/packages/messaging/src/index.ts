@@ -20,3 +20,4 @@ export {
 export { CommandMessage, commandQueue, consumeCommands, type CommandQueueOptions, type ConsumeCommandsOptions } from "./commands.js";
 export { EventMessage, consumeEvents, eventRelay, type ConsumeEventsOptions, type EventRelayOptions } from "./events.js";
 export { deadLetterReplay, type DeadLetterReplayOptions } from "./replay.js";
+export { sleep, withTimeout } from "./timing.js";

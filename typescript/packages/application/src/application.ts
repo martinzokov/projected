@@ -39,8 +39,7 @@ import type {
 } from "./ports.js";
 import { currentTrace, noTelemetry, type Span, type Telemetry } from "./telemetry.js";
 import { decodeWireError, encodeWireError, toValidationIssues, type OperationRequest, type OperationResult } from "./wire.js";
-
-type MaybePromise<T> = T | Promise<T>;
+import type { MaybePromise } from "./naming.js";
 
 /** Structural, so it also recognises Results from another copy of better-result. */
 const isResult = (value: unknown): value is Result<unknown, unknown> =>
@@ -179,6 +178,12 @@ export interface Application<C extends AnyContracts = AnyContracts> {
    */
   operate(task: string, input: unknown, metadata?: Partial<Metadata>): Promise<Result<unknown, OperateError>>;
 }
+
+/**
+ * Keys are scoped to the caller, but every anonymous caller is the same caller: their keys must
+ * be too long to guess, or one could replay another's outcome.
+ */
+const MIN_ANONYMOUS_KEY_LENGTH = 16;
 
 /** Why a principal may not run an operation under `access`, or `undefined` when it may. */
 export function checkAccess(
@@ -536,6 +541,9 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
       );
     }
     const operation = `${contract.kind} ${contract.key}`;
+    // Ids first, so the span names the message even when the transport sent none.
+    const messageId = request.metadata?.messageId ?? options.ids.next();
+    const given: Partial<Metadata> = { ...request.metadata, messageId };
     return telemetry.span(
       operation,
       {
@@ -545,8 +553,8 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
           "projected.operation.kind": contract.kind,
           "projected.operation.type": contract.type,
           "projected.operation.version": contract.version,
-          "projected.message_id": request.metadata?.messageId,
-          "projected.correlation_id": request.metadata?.correlationId,
+          "projected.message_id": messageId,
+          "projected.correlation_id": request.metadata?.correlationId ?? messageId,
           "enduser.id": request.metadata?.principal?.id,
         },
       },
@@ -562,9 +570,14 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
               new InvalidInput({ issues: toValidationIssues(input.error.issues), message: `Invalid input for ${operation}` }),
             );
           }
-          const metadata = completeMetadata(request.metadata);
+          const metadata = completeMetadata(given);
           const key = metadata.idempotencyKey;
           if (contract.kind === "command" && key !== undefined && options.idempotency !== undefined) {
+            // Anonymous callers share one scope, so the key itself must be what keeps their outcomes apart.
+            if (metadata.principal === undefined && key.length < MIN_ANONYMOUS_KEY_LENGTH) {
+              const message = `An anonymous caller's idempotency key must be at least ${MIN_ANONYMOUS_KEY_LENGTH} characters: send a random UUID`;
+              return Result.err(new InvalidInput({ issues: [{ path: ["Idempotency-Key"], message, code: undefined }], message }));
+            }
             return runOnce(options.idempotency, key, contract, input.data, metadata, span);
           }
           return run(contract, handler, input.data, metadata);

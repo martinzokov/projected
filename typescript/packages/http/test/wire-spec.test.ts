@@ -71,7 +71,7 @@ describe("HTTP binding conforms to spec/wire.schema.json", () => {
   });
 
   it("for idempotency problems", async () => {
-    const key = { "idempotency-key": "join-cy" };
+    const key = { "idempotency-key": "8c1d2e4f-join-cy" };
     await post("/commands/join-club/version/1", { name: "Cy" }, key);
 
     const reused = await post("/commands/join-club/version/1", { name: "Dee" }, key);
