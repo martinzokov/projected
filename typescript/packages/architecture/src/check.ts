@@ -2,7 +2,7 @@ import { clearCaches } from "@typescript-eslint/parser";
 import { cruise, type ICruiseResult } from "dependency-cruiser";
 import { ESLint } from "eslint";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { dependencyCruiserConfig, dependencyCruiserRules, type DependencyCruiserOptions } from "./dependency-cruiser.js";
 import { DESIGN_RULE_DEFAULTS, projectedEslint, type DesignRules } from "./eslint.js";
 import { checkLayout, type Violation } from "./layout.js";
@@ -37,29 +37,23 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
 
   const comments = new Map(dependencyCruiserRules(options).map((rule) => [rule.name, rule.comment ?? ""]));
   const config = dependencyCruiserConfig(options);
-  const previous = process.cwd();
-  let cruised: ICruiseResult;
-  try {
-    // dependency-cruiser resolves paths against the working directory.
-    process.chdir(root);
-    const { options: cruiseOptions = {} } = config;
-    const { tsConfig: _tsConfig, ...rest } = cruiseOptions;
-    const result = await cruise(
-      // Tests too, so that test code cannot reach for the other flavour either.
-      existsSync(join(root, "test")) ? ["src", "test"] : ["src"],
-      { ...rest, ruleSet: { forbidden: config.forbidden ?? [] }, validate: true, outputType: "json" },
-      {
-        extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] },
-        // Resolve packages the way Node does, including subpath exports (`better-auth/plugins`).
-        exportsFields: ["exports"],
-        conditionNames: ["import", "node", "types", "default", "require"],
-        mainFields: ["module", "main", "types"],
-      },
-    );
-    cruised = (typeof result.output === "string" ? JSON.parse(result.output) : result.output) as ICruiseResult;
-  } finally {
-    process.chdir(previous);
-  }
+  const { options: cruiseOptions = {} } = config;
+  const { tsConfig: _tsConfig, ...rest } = cruiseOptions;
+  // baseDir, not process.chdir: the working directory is process-wide, and worker threads (test
+  // runners, mutation testing) may not change it at all.
+  const result = await cruise(
+    // Tests too, so that test code cannot reach for the other flavour either.
+    existsSync(join(root, "test")) ? ["src", "test"] : ["src"],
+    { ...rest, baseDir: root, ruleSet: { forbidden: config.forbidden ?? [] }, validate: true, outputType: "json" },
+    {
+      extensionAlias: { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"], ".cjs": [".cts", ".cjs"] },
+      // Resolve packages the way Node does, including subpath exports (`better-auth/plugins`).
+      exportsFields: ["exports"],
+      conditionNames: ["import", "node", "types", "default", "require"],
+      mainFields: ["module", "main", "types"],
+    },
+  );
+  const cruised = (typeof result.output === "string" ? JSON.parse(result.output) : result.output) as ICruiseResult;
   for (const violation of cruised.summary.violations) {
     violations.push({
       tool: "dependency-cruiser",
@@ -85,7 +79,7 @@ export async function checkArchitecture(root: string, options: CheckOptions = {}
       (message.severity === 1 && designRules.has(message.ruleId ?? "") ? warnings : violations).push({
         tool: "eslint",
         rule: message.ruleId ?? (message.fatal ? "parse-error" : "inline-config"),
-        file: result.filePath.startsWith(root) ? result.filePath.slice(root.length + 1) : result.filePath,
+        file: relative(root, result.filePath),
         line: message.line,
         message: message.message,
       });

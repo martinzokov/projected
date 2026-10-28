@@ -18,3 +18,4 @@ export { canonicalSpec, parseSpec, specHash, type OpenApiDocument } from "./vend
 export { docs } from "./docs/commands.js";
 export { analyze, type CodeModel } from "./docs/analyze.js";
 export { renderCatalog } from "./docs/render.js";
+export { mutate, type MutationConfig } from "./mutate.js";

@@ -95,6 +95,58 @@ describe("school over HTTP", () => {
     expect(profile.body).toMatchObject({ value: { student: { status: "withdrawn", lastname: "Wayne" } } });
   });
 
+  it("reports a lastname that is already the student's as no change", async () => {
+    const { post } = testSchool();
+    await post("/commands/enlist-student/version/1", bruce);
+
+    const reported = await post("/commands/report-student-lastname-change/version/1", { studentId: "student-1", newLastname: "Wayne" });
+
+    expect(reported.body).toEqual({ status: "ok", value: { changed: false } });
+  });
+
+  it("withdraws a student once, and reports a repeat as no change", async () => {
+    const { post } = testSchool();
+    await post("/commands/enlist-student/version/2", { studentId: "s-1", ...bruce });
+
+    const first = await post("/commands/withdraw-student/version/1", { studentId: "s-1", leavingDate: "2024-06-30" });
+    const again = await post("/commands/withdraw-student/version/1", { studentId: "s-1", leavingDate: "2024-07-01" });
+
+    expect([first.body, again.body]).toEqual([
+      { status: "ok", value: { withdrawn: true } },
+      { status: "ok", value: { withdrawn: false } },
+    ]);
+  });
+
+  it("explains a refused withdrawal with the rule it broke", async () => {
+    const { post } = testSchool();
+    await post("/commands/enlist-student/version/2", { studentId: "s-1", ...bruce });
+
+    const unknown = await post("/commands/withdraw-student/version/1", { studentId: "s-9", leavingDate: "2024-06-30" });
+    const early = await post("/commands/withdraw-student/version/1", { studentId: "s-1", leavingDate: "2023-01-01" });
+
+    expect([unknown.body, early.body]).toEqual([
+      { status: "error", error: { type: "StudentNotEnlisted", message: "No enlisted student has id s-9", data: { studentId: "s-9" } } },
+      {
+        status: "error",
+        error: {
+          type: "LeavingBeforeJoining",
+          message: "Cannot leave on 2023-01-01, before joining on 2023-09-22",
+          data: { joiningDate: "2023-09-22", leavingDate: "2023-01-01" },
+        },
+      },
+    ]);
+  });
+
+  it("treats a generated id that is already taken as a defect, not an outcome", async () => {
+    const { post, defects } = testSchool();
+    await post("/commands/enlist-student/version/2", { studentId: "student-1", ...bruce });
+
+    const collided = await post("/commands/enlist-student/version/1", bruce);
+
+    expect(collided.status).toBe(500);
+    expect(defects.map((defect) => defect.message)).toEqual([expect.stringContaining("Generated student id student-1 is already taken")]);
+  });
+
   it("uses protocol status codes only for protocol problems", async () => {
     const { post } = testSchool();
 

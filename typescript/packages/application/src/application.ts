@@ -1,4 +1,4 @@
-import { Result, isTaggedError, panic, type BusinessError } from "@projected/domain";
+import { Result, isPanic, isTaggedError, panic, type BusinessError } from "@projected/domain";
 import type {
   Access,
   AnyContracts,
@@ -153,6 +153,21 @@ export function checkAccess(
  * });
  * ```
  */
+/**
+ * Why something went wrong, for the defect's message. Combinators wrap a panic in their own
+ * ("mapError callback threw"), so the reason worth reading is the deepest panic in the cause
+ * chain — or, when nothing panicked, the deepest error.
+ */
+function rootReason(cause: unknown): string | undefined {
+  let deepestPanic: string | undefined;
+  let deepest: string | undefined;
+  for (let current = cause, depth = 0; current instanceof Error && depth < 10; current = current.cause, depth++) {
+    deepest = current.message;
+    if (isPanic(current)) deepestPanic = current.message;
+  }
+  return deepestPanic ?? deepest;
+}
+
 export function createApplication<C extends AnyContracts>(contracts: C, options: ApplicationOptions<C>): Application<C> {
   const telemetry = options.telemetry ?? noTelemetry;
   const handlers = new Map<string, Handler<AnyOperationContract>>();
@@ -189,7 +204,9 @@ export function createApplication<C extends AnyContracts>(contracts: C, options:
   };
 
   const defect = (contract: AnyOperationContract, message: string, cause?: unknown): Result<never, OperationDefect> => {
-    const error = new OperationDefect({ operation: `${contract.kind} ${contract.key}`, message, cause });
+    const reason = rootReason(cause);
+    const full = reason === undefined || reason === message ? message : `${message}: ${reason}`;
+    const error = new OperationDefect({ operation: `${contract.kind} ${contract.key}`, message: full, cause });
     options.onDefect?.(error);
     return Result.err(error);
   };

@@ -98,8 +98,9 @@ For a requirement like *"a student who leaves the school is withdrawn, but their
    ```ts
    commands: { ..., "withdraw-student@1": withdrawStudent({ students }) },
    ```
-5. **Test** it (`projected-testing` skill): a given/when/then test per decision rule, and an
-   HTTP test for the endpoint.
+5. **Test** it (`projected-testing` skill): a given/when/then test per decision rule, a property
+   for any rule that holds whatever the input, and an HTTP test for the endpoint. After domain
+   work, `projected mutate` shows which behaviour no test checks yet.
 6. **Regenerate and lock**: `projected openapi`, `projected contracts --update` and
    `projected docs`. Commit `openapi.json`, `contracts.lock.json` and `docs/catalog.md`.
 7. **Verify**: run the project's check (`pnpm check` / `projected check`) and the tests. Done
@@ -171,6 +172,7 @@ runs its own copy of the rules, so local config edits do not make it pass anyway
 | `projected contracts --update` | lock new operations (refuses changes to published ones) |
 | `projected vendor add <name> --spec <url\|file>` | generate a typed, Result-returning client for a third-party OpenAPI |
 | `projected vendor update <name>` | take a vendor's new spec (refuses breaking changes unless accepted) |
+| `projected mutate` | mutation-test the domain and use cases; lists the changes no test notices, fails below the threshold |
 | `tsc -b` | compile every layer; boundary violations are compile errors |
 
 Related skills: `projected-domain-modelling`, `projected-contracts`, `projected-integrations`,

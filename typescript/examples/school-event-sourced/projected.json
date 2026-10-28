@@ -1,5 +1,8 @@
 {
   "flavour": "event-sourced",
+  "mutation": {
+    "threshold": 90
+  },
   "securitySchemes": {
     "betterAuthSession": {
       "type": "apiKey",

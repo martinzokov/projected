@@ -25,7 +25,8 @@
   ],
   "dependencies": {
     "@projected/application": "workspace:*",
-    "@projected/messaging": "workspace:*"
+    "@projected/messaging": "workspace:*",
+    "fast-check": "4.10.2"
   },
   "peerDependencies": {
     "vitest": ">=3"

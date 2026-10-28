@@ -2,7 +2,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkArchitecture, formatViolations } from "@projected/architecture";
 
-describe("architecture", () => {
+// Mutation testing runs the tests against instrumented copies of src/, which are not the code this
+// test is about: it checks the code you wrote, and `projected check` runs it on that in CI.
+describe.skipIf(process.env["PROJECTED_MUTATION"] !== undefined)("architecture", () => {
   it("keeps every boundary", async () => {
     const report = await checkArchitecture(fileURLToPath(new URL("..", import.meta.url)), { flavour: "event-sourced" });
 

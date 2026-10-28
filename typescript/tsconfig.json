@@ -17,6 +17,9 @@
       "path": "packages/testing"
     },
     {
+      "path": "packages/testing/test"
+    },
+    {
       "path": "packages/store-memory"
     },
     {

@@ -30,6 +30,8 @@ cd typescript && pnpm install && pnpm check
 `pnpm check` = `tsc -b` + ESLint + vitest + `projected check` in every example. It must be green
 before you finish. Individual steps: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm exec vitest run <path>`.
 The architecture fitness tests compile fixtures with `tsc -b`, so build before running them.
+`pnpm mutate` mutation-tests both examples (slow; CI runs it): a change to `@projected/testing` or
+to an example's tests must keep their scores above the threshold in their `projected.json`.
 
 Adapter tests against real servers are skipped unless their variables are set. When you touch a
 store or transport, run them too:

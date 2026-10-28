@@ -4,3 +4,6 @@ dist/
 *.tsbuildinfo
 coverage/
 .DS_Store
+.stryker-tmp/
+.vitest-cache/
+reports/

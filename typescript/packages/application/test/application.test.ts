@@ -12,6 +12,7 @@ import {
   defineEventHandler,
   defineQuery,
   inProcessService,
+  panic,
   z,
   type CommandHandler,
   type EventStore,
@@ -156,6 +157,22 @@ describe("dispatch", () => {
 
     expect(outcome.isErr() && outcome.error._tag).toBe("OperationDefect");
     expect(onDefect).toHaveBeenCalledOnce();
+  });
+
+  it("names the reason in a defect, past the wrappers of Result combinators", async () => {
+    const defects: OperationDefect[] = [];
+    const Explode = defineCommand({ type: "explode", input: z.object({}), output: z.object({}) });
+    const app = createApplication(defineContracts({ name: "bombs", access: "public", commands: [Explode] }), {
+      ids: sequentialIds(),
+      onDefect: (defect) => defects.push(defect),
+      commands: {
+        "explode@1": () => Result.err(new DependencyUnavailable({ dependency: "x", message: "down" })).mapError(() => panic("the fuse was lit twice")),
+      },
+    });
+
+    await app.dispatch({ kind: "command", type: "explode", version: 1, input: {} });
+
+    expect(defects.map((defect) => defect.message)).toEqual([expect.stringContaining("the fuse was lit twice")]);
   });
 
   it("treats a handler that returns no Result as a defect", async () => {

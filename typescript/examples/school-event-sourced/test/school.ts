@@ -9,6 +9,7 @@ export const teacher = principal("u-teacher");
 /** The real composition, with deterministic time and ids and in-memory stores, served by the real HTTP handler. */
 export function testSchool() {
   const clock = fixedClock("2023-10-01T09:00:00.000Z");
+  const defects: Error[] = [];
   const eventStore = inMemoryEventStore({ clock, ids: sequentialIds("event") });
   const app = composeSchool({
     eventStore,
@@ -17,6 +18,7 @@ export function testSchool() {
     idempotency: inMemoryIdempotencyStore({ clock }),
     clock,
     ids: sequentialIds("student"),
+    onDefect: (defect) => defects.push(defect),
   });
   const handler = httpHandler(app, {
     messageIds: sequentialIds("request").next,
@@ -33,5 +35,5 @@ export function testSchool() {
     );
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
-  return { app, handler, post, eventStore, clock };
+  return { app, handler, post, eventStore, clock, defects };
 }

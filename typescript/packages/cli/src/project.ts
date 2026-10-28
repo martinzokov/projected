@@ -40,6 +40,8 @@ export interface ProjectConfig {
   readonly rules?: DesignRules;
   /** The generated service catalog. Defaults to `docs/catalog.md`. */
   readonly docs?: string;
+  /** Mutation testing (`projected mutate`): the minimum score and what to mutate. */
+  readonly mutation?: { readonly threshold?: number; readonly mutate?: readonly string[] };
 }
 
 export interface Project {

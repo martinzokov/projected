@@ -16,6 +16,7 @@ where each kind of test goes. Tests live in `test/`, never in `src/`.
 | use case | handler + repository + ports, through the contract | `app.execute`, in-memory adapters | some |
 | HTTP | the operation is served as the protocol says | `httpHandler(app)` + `Request` | a few per operation |
 | adapter | a real adapter meets its port | conformance suites | per adapter |
+| property | a rule holds for every valid input | `forAll`, `fromSchema` | per invariant |
 
 ## Decisions: given / when / then
 
@@ -76,6 +77,50 @@ it("changes nothing when the name is unchanged", () => {
 `thenRemoves(...events)` a removal. One rule per test, named as the rule. The given state and the
 state a decision stores both go through the aggregate's schema, so a test cannot pass with a state
 the store would refuse.
+
+## Properties: rules that hold for every input
+
+An example test checks one case; a property checks hundreds the computer picks, and shrinks a
+failure to the smallest case that still breaks. Use them for rules that hold *whatever* the
+input — they complement the examples above, they do not replace them. `forAll` fails by
+throwing, so `given(...).then...` and `expect` work inside it; `fromSchema` makes values valid
+for any zod schema (a contract's `input`, an event's schema), parsed by the schema itself so
+refinements hold.
+
+```ts
+import { everyHistoryFolds, forAll, fromSchema, given } from "@projected/testing/event-sourced";
+
+it("folds any history of student events, however unlikely its order", () => {
+  everyHistoryFolds(Student);                       // evolve must cope with whatever is in the store
+});
+
+it("enlists anyone the contract accepts, exactly once", () => {
+  forAll([fromSchema(EnlistStudentV2.input)], (input) => {
+    given(Student).when((state) => enlist(state, input)).thenEvents(StudentEnlisted(input));
+    given(Student, [StudentEnlisted(input)]).when((state) => enlist(state, input)).thenRejectsWith(StudentAlreadyEnlisted);
+  });
+});
+```
+
+State-based, `anyState(Student)` is any valid state or none (`undefined`), and
+`anyState(Student, { existing: true })` always a state; `everyStateRoundTrips(Student)` checks
+that every valid state survives storage unchanged:
+
+```ts
+import { anyState, everyStateRoundTrips, forAll, fromSchema, given } from "@projected/testing/state-based";
+
+it("never changes a withdrawn student's name, whatever is reported", () => {
+  forAll([anyState(Student, { existing: true }), fromSchema(Report)], (state, report) => {
+    given(Student, { ...state, status: "withdrawn" })
+      .when((current) => reportLastnameChange(current, report))
+      .thenRejectsWith(StudentNotEnlisted);
+  });
+});
+```
+
+Every aggregate gets `everyHistoryFolds` or `everyStateRoundTrips`. A failure prints the seed;
+pass `{ seed }` to replay it. `fc` (fast-check) is re-exported for arbitraries the helpers
+don't cover.
 
 ## Use cases: the real composition, in memory
 
@@ -162,7 +207,23 @@ runs anywhere, and run them with `docker compose up -d --wait && pnpm test:integ
 same kind of contract test for your own driven ports, and run it against both the in-memory fake
 and the real adapter — that is what keeps the fake honest.
 
+## Mutation testing: do the tests check what the code does?
+
+`projected mutate` (needs `@stryker-mutator/core` and `vitest` as dev dependencies) makes small
+changes to the domain and the use cases — a condition flipped, a string emptied, a branch
+removed — and runs the tests against each. A change no test notices is a behaviour nobody
+checks; the score is the share noticed, and the run fails below `"mutation": { "threshold" }` in
+projected.json (default 70; the school examples hold 90). It lists each surviving change as
+`file:line Mutator → replacement`, with the full report in `reports/mutation/index.html`.
+
+For each survivor, write the test that would have caught it, named as the behaviour — not a test
+of the mutant. A survivor that changes nothing observable (an unreachable guard) is an equivalent
+mutant: leave it. It is slow (one test run per mutant), so it is not part of `projected check`;
+run it before finishing domain work and in CI. Tests about code shape skip themselves when
+`PROJECTED_MUTATION` is set, since they would see the instrumented copy.
+
 ## Architecture is tested too
 
 Keep a test that runs `checkArchitecture(root)` from `@projected/architecture` and expects no
-violations, so `pnpm test` alone catches a boundary breach.
+violations, so `pnpm test` alone catches a boundary breach. Skip it under mutation testing:
+`describe.skipIf(process.env["PROJECTED_MUTATION"] !== undefined)`.

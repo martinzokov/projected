@@ -1,5 +1,8 @@
 {
   "flavour": "state-based",
+  "mutation": {
+    "threshold": 90
+  },
   "securitySchemes": {
     "betterAuthSession": {
       "type": "apiKey",

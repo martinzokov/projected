@@ -2,3 +2,4 @@
 export * from "../index.js";
 export { given, type Then, type When } from "./given.js";
 export { stateStoreConformance } from "./state-store-conformance.js";
+export { anyState, everyStateRoundTrips } from "./properties.js";

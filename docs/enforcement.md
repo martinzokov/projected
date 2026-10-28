@@ -140,6 +140,18 @@ Not static rules, but every adapter must demonstrate them against a real server:
 The Postgres adapter also has a concurrent writer/reader test for global order that fails when
 its ordering lock is removed.
 
+## Tests that test the tests
+
+| Check | Holds | Where |
+|---|---|---|
+| `everyHistoryFolds(aggregate)` (event-sourced) | `evolve` folds any sequence of valid events without failing | the app's domain tests |
+| `everyStateRoundTrips(aggregate)` (state-based) | every valid state survives encode/decode unchanged | the app's domain tests |
+| `projected mutate` | at least `mutation.threshold`% (default 70) of Stryker's mutants of `src/domain` and `src/application/usecase` fail some test | CI's mutation job; on demand locally |
+
+Mutation testing runs apart from `projected check` because it runs the test suite once per mutant.
+The school examples hold a threshold of 90; their survivors are error descriptions and
+unreachable `evolve` guards.
+
 ## Protocol
 
 `spec/wire.schema.json` is checked against real HTTP responses and real messages

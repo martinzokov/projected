@@ -11,3 +11,4 @@ export { principal, tokenAuthenticator } from "./auth.js";
 export { recordingTelemetry, type RecordedSpan, type RecordingTelemetry } from "./telemetry.js";
 export { checkpointStoreConformance, documentStoreConformance, idempotencyStoreConformance } from "./store-conformance.js";
 export { messageTransportConformance, type TransportConformanceOptions, type TransportUnderTest } from "./transport-conformance.js";
+export { fc, forAll, fromSchema, type ForAllOptions } from "./properties.js";

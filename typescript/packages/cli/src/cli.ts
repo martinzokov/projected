@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { architecture, contractsLock, openapi, type CommandResult } from "./commands.js";
 import { docs } from "./docs/commands.js";
+import { mutate } from "./mutate.js";
 import { loadProject } from "./project.js";
 import { vendorAdd, vendorCheck, vendorGenerate, vendorUpdate } from "./vendor/commands.js";
 
@@ -18,6 +19,8 @@ Commands:
   contracts --rebaseline
                         accept current fingerprints after a toolchain upgrade (review
                         the openapi.json diff first: it must show no contract change)
+  mutate                mutation-test the domain and use cases with Stryker;
+                        fails below "mutation": { "threshold": n } (default 70)
   docs [--check]        write docs/catalog.md — operations, aggregates, events, handlers,
                         ports and a Mermaid flow diagram, all derived from the code
   vendor add <name> --spec <url|file>
@@ -31,7 +34,8 @@ Commands:
 
 Configuration: projected.json in the project root. "flavour" ("event-sourced" or
 "state-based") is required; contracts, openapi, lock, applicationPackages, domainPackages,
-securitySchemes, vendors, rules (design rule levels) and docs (catalog path) are optional.`;
+securitySchemes, vendors, rules (design rule levels), docs (catalog path) and mutation
+(threshold, files) are optional.`;
 
 /** Run the CLI. Returns the process exit code: 0 ok, 1 checks failed, 2 usage error. */
 export async function run(argv: readonly string[], print: (line: string) => void): Promise<number> {
@@ -84,6 +88,9 @@ export async function run(argv: readonly string[], print: (line: string) => void
       break;
     case "docs":
       steps.push(() => docs(project, { check: values.check }));
+      break;
+    case "mutate":
+      steps.push(() => mutate(project));
       break;
     case "arch":
       steps.push(() => architecture(project, { strict: values.strict }));

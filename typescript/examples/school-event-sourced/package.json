@@ -9,9 +9,11 @@
     "start": "node .tsbuild/infrastructure/config/main.js",
     "check": "projected check",
     "openapi": "projected openapi",
-    "lock": "projected contracts --update"
+    "lock": "projected contracts --update",
+    "mutate": "projected mutate"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
     "@projected/application": "workspace:*",
     "@projected/auth-better-auth": "workspace:*",
     "@projected/domain": "workspace:*",
@@ -23,7 +25,6 @@
     "@projected/runtime": "workspace:*",
     "@projected/store-memory": "workspace:*",
     "@projected/store-postgres": "workspace:*",
-    "@opentelemetry/api": "^1.10.0",
     "better-auth": "^1.7.14",
     "pg": "^8.23.1"
   },
@@ -31,6 +32,7 @@
     "@projected/architecture": "workspace:*",
     "@projected/cli": "workspace:*",
     "@projected/testing": "workspace:*",
+    "@stryker-mutator/core": "10.0.0",
     "@types/pg": "^8.23.1"
   }
 }
