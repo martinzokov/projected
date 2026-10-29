@@ -123,7 +123,7 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 |---|---|---|
 | `@projected/domain` | domain | Result, zod, `defineEvent`, `defineError`; `defineAggregate` per flavour (`/event-sourced`, `/state-based`) — pure, no I/O |
 | `@projected/application` | application | contracts with access rules, handlers, ports (auth, idempotency, telemetry, documents), event handlers, dispatcher; the aggregate store port and repository per flavour |
-| `@projected/http` | infrastructure | endpoints and OpenAPI derived from contracts, authenticators, typed `httpService`, Result-based `httpClient`; Node server in `@projected/http/node` |
+| `@projected/http` | infrastructure | endpoints and OpenAPI derived from contracts, authenticators, typed `httpService`, Result-based `httpClient`; hosted in Hono by a generated service (CORS, security headers, body limit), or bare in `@projected/http/node` |
 | `@projected/messaging` | infrastructure | queued commands, consumers, event relay over a pluggable transport |
 | `@projected/kafka` | infrastructure | Kafka transport (`@platformatic/kafka`) |
 | `@projected/nats` | infrastructure | NATS JetStream transport — the lightweight broker |

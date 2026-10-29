@@ -7,7 +7,9 @@ import { camel, pascal, plural, wordsOf } from "./names.js";
  */
 export const DEPENDENCY_VERSIONS = {
   "@opentelemetry/api": "^1.10.0",
+  "@hono/node-server": "^1.19.17",
   "better-auth": "^1.7.14",
+  hono: "^4.13.14",
   pg: "^8.23.1",
   "@types/pg": "^8.23.1",
   "@types/node": "^22.19.0",
@@ -63,7 +65,7 @@ export function serviceFiles(service: ServiceTemplate): Record<string, string> {
         mutate: "projected mutate",
         migrate: "projected migrate",
       },
-      dependencies: dependencies(FRAMEWORK, ["@opentelemetry/api", "better-auth", "pg"]),
+      dependencies: dependencies(FRAMEWORK, ["@hono/node-server", "@opentelemetry/api", "better-auth", "hono", "pg"]),
       devDependencies: dependencies(FRAMEWORK_DEV, ["@stryker-mutator/core", "@types/node", "@types/pg", "typescript", "vitest"]),
     }),
     "projected.json": json({
@@ -214,6 +216,7 @@ export function compose${Name}(infrastructure: ${Name}Infrastructure) {
     "src/infrastructure/config/auth.ts": `import { memoryAdapter } from "better-auth/adapters/memory";
 import { admin, bearer } from "better-auth/plugins";
 import type pg from "pg";
+import { corsOrigins } from "./web.js";
 
 /**
  * better-auth's options, in one place: the service creates better-auth with them, and its
@@ -225,6 +228,8 @@ export function authOptions(env: NodeJS.ProcessEnv, pool?: pg.Pool) {
     baseURL: env.PUBLIC_URL ?? \`http://localhost:\${env.PORT ?? 3000}\`,
     secret: env.AUTH_SECRET ?? "development-only-secret-change-me-0000000000",
     database: pool ?? memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+    // Sign-in from another origin is refused unless CORS lets that origin call the service at all.
+    trustedOrigins: corsOrigins(env),
     emailAndPassword: { enabled: true },
     plugins: [bearer(), admin()],
   };
@@ -319,14 +324,68 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
   };
 }
 `,
+    "src/infrastructure/config/web.ts": `import { serve } from "@hono/node-server";
+import { CORS_HEADERS, payloadTooLarge, type FetchHandler } from "@projected/http";
+import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
+
+export interface WebOptions {
+  /** Origins whose browsers may call the service, and sign in. None: the same origin only. */
+  readonly corsOrigins: readonly string[];
+  /** Larger request bodies get 413. Defaults to 1 MiB. */
+  readonly maxBodyBytes?: number;
+}
+
+/** The origins listed in CORS_ORIGINS, comma-separated: \`https://app.example.com,https://admin.example.com\`. */
+export const corsOrigins = (env: NodeJS.ProcessEnv): string[] => (env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter((origin) => origin !== "");
+
+/**
+ * The service on the web: the projected handler behind Hono's middleware — security headers, CORS
+ * for the origins listed, a body size limit. Add middleware of your own here, before the handler;
+ * access rules, idempotency and tracing are the handler's, so that messaging gets them too.
+ */
+export function web(api: FetchHandler, options: WebOptions): Hono {
+  const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
+  const app = new Hono();
+  app.use(secureHeaders());
+  if (options.corsOrigins.length > 0) {
+    app.use(
+      cors({
+        origin: [...options.corsOrigins],
+        credentials: true,
+        allowHeaders: [...CORS_HEADERS.allow],
+        exposeHeaders: [...CORS_HEADERS.expose],
+        maxAge: 600,
+      }),
+    );
+  }
+  app.use(bodyLimit({ maxSize: maxBodyBytes, onError: () => payloadTooLarge(maxBodyBytes) }));
+  app.all("*", (c) => api(c.req.raw));
+  return app;
+}
+
+/** Serve \`app\` on Node, as a server \`shutdownGracefully\` can close. */
+export function listen(app: Hono, port: number): Promise<{ readonly url: string; close(): Promise<void> }> {
+  return new Promise((resolve) => {
+    const server = serve({ fetch: app.fetch, port }, (info) =>
+      resolve({
+        url: \`http://localhost:\${info.port}\`,
+        close: () => new Promise((done, fail) => server.close((error) => (error ? fail(error) : done()))),
+      }),
+    );
+  });
+}
+`,
     "src/infrastructure/config/main.ts": `import { OPERATE } from "@projected/application/${flavour}";
 import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, rolesOf } from "@projected/auth-better-auth";
 import { httpHandler } from "@projected/http";
-import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
 import { monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { compose${Name} } from "./${name}.js";
+import { corsOrigins, listen, web } from "./web.js";
 
 const clock = systemClock();
 const infrastructure = await environment(clock);
@@ -348,14 +407,13 @@ const authenticator = betterAuthAuthenticator(infrastructure.auth, {
   permissions: (session) => (rolesOf(session).includes("admin") ? [OPERATE] : []),
 });
 
-const server = await serve(
-  httpHandler(app, {
-    authenticator,
-    routes: betterAuthRoutes(infrastructure.auth),
-    openApi: { version: "0.1.0", securitySchemes: betterAuthSecuritySchemes() },
-  }),
-  { port: Number(process.env.PORT ?? 3000) },
-);
+const api = httpHandler(app, {
+  authenticator,
+  routes: betterAuthRoutes(infrastructure.auth),
+  openApi: { version: "0.1.0", securitySchemes: betterAuthSecuritySchemes() },
+});
+// CORS_ORIGINS lists the browser origins that may call the service; none means the same origin only.
+const server = await listen(web(api, { corsOrigins: corsOrigins(process.env) }), Number(process.env.PORT ?? 3000));
 console.log(\`${name} is listening on \${server.url} — OpenAPI document at \${server.url}/openapi.json\`);
 
 // Event handlers catch up in the background too, picking up whatever a failed inline catch-up
@@ -413,6 +471,44 @@ export function test${Name}() {
   };
   return { app, handler, post, clock, defects };
 }
+`,
+    "test/web.test.ts": `import { describe, expect, it } from "vitest";
+import { web } from "../src/infrastructure/config/web.js";
+import { test${Name} } from "./${name}.js";
+
+const app = "https://app.${name}.test";
+const site = () => web(test${Name}().handler, { corsOrigins: [app], maxBodyBytes: 1024 });
+
+describe("${name} on the web", () => {
+  it("lets a listed origin call it from a browser, sending the protocol's headers", async () => {
+    const preflight = await site().request("/commands", {
+      method: "OPTIONS",
+      headers: { origin: app, "access-control-request-method": "POST", "access-control-request-headers": "content-type, idempotency-key" },
+    });
+
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe(app);
+    expect(preflight.headers.get("access-control-allow-headers")).toContain("idempotency-key");
+  });
+
+  it("gives other origins nothing that would let a browser read the answer", async () => {
+    const response = await site().request("/health/live", { headers: { origin: "https://elsewhere.test" } });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("answers a body over the limit with the protocol's 413", async () => {
+    const response = await site().request("/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ padding: "x".repeat(2048) }),
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ type: "urn:projected:problem:payload-too-large" });
+  });
+});
 `,
     "test/http.test.ts": `import { describe, expect, it } from "vitest";
 import { test${Name} } from "./${name}.js";

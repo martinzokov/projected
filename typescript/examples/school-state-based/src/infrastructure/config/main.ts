@@ -1,10 +1,10 @@
 import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, rolesOf } from "@projected/auth-better-auth";
 import { OPERATE } from "@projected/application/state-based";
 import { httpHandler } from "@projected/http";
-import { serve } from "@projected/http/node";
 import { openTelemetry } from "@projected/opentelemetry";
 import { monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
+import { corsOrigins, listen, web } from "./web.js";
 import { composeSchool } from "./school.js";
 
 const clock = systemClock();
@@ -29,14 +29,13 @@ const authenticator = betterAuthAuthenticator(infrastructure.auth, {
     rolesOf(session).includes("admin") || admins.includes(session.user.email ?? "") ? ["students:manage", OPERATE] : [],
 });
 
-const server = await serve(
-  httpHandler(school, {
-    authenticator,
-    routes: betterAuthRoutes(infrastructure.auth),
-    openApi: { version: "1.0.0", securitySchemes: betterAuthSecuritySchemes() },
-  }),
-  { port: Number(process.env.PORT ?? 3000) },
-);
+const api = httpHandler(school, {
+  authenticator,
+  routes: betterAuthRoutes(infrastructure.auth),
+  openApi: { version: "1.0.0", securitySchemes: betterAuthSecuritySchemes() },
+});
+// CORS_ORIGINS lists the browser origins that may call the service; none means the same origin only.
+const server = await listen(web(api, { corsOrigins: corsOrigins(process.env) }), Number(process.env.PORT ?? 3000));
 console.log(`school is listening on ${server.url} — OpenAPI document at ${server.url}/openapi.json`);
 
 // Every event handler catches up in the background too: the relays, and whatever a failed

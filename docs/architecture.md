@@ -216,10 +216,14 @@ serializable shape matching the wire format's `status: "ok" | "error"`). zod 4 f
 TypeScript 7 (the native port) does not ship the JavaScript compiler API that typescript-eslint
 and dependency-cruiser need. pnpm workspaces, vitest, Node ≥ 22.
 
-**D8 — Web-standard HTTP.** The inbound adapter is a `(Request) => Promise<Response>` function,
-so it runs on Node (`serve` from `@projected/http/node`), Bun, Deno and edge runtimes, and can be
-tested without a socket.
-No web framework dependency.
+**D8 — Web-standard HTTP, hosted by Hono.** The inbound adapter is a `(Request) =>
+Promise<Response>` function, so it runs on Node, Bun, Deno and edge runtimes, and can be tested
+without a socket. The framework depends on no web framework: routes come from the contracts, and
+access rules, idempotency and tracing live in the dispatcher, so that messaging gets them too.
+A service hosts the handler in [Hono](https://hono.dev) (`src/infrastructure/config/web.ts`),
+which is web-standard as well and brings the edge concerns — CORS, security headers, a body
+limit, and whatever middleware the service adds. Fastify and Express are Node-only and would
+need an adapter; `serve` from `@projected/http/node` remains for a bare handler.
 
 **D9 — anti-slop is vendored, not a submodule.** `vendor/anti-slop` is a copy pinned to an
 upstream commit (recorded in `UPSTREAM.md`) and refreshed only by `scripts/sync-anti-slop.sh`.

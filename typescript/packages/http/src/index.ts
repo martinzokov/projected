@@ -20,10 +20,12 @@ export {
   type HttpServiceOptions,
 } from "./client.js";
 export {
+  CORS_HEADERS,
   HEADERS,
   PROBLEM_TYPES,
   operationId,
   operationPath,
+  payloadTooLarge,
   problemForDispatchError,
   problemForOperateError,
   type Problem,

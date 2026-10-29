@@ -28,7 +28,7 @@ describe("the template and the school examples", () => {
       const generated = join(outside, "billing", "src/infrastructure/config");
       const school = join(workspace, "examples", `school-${flavour}`, "src/infrastructure/config");
 
-      for (const file of ["auth.ts", "migrations.ts", "migrate.ts"]) {
+      for (const file of ["auth.ts", "migrations.ts", "migrate.ts", "web.ts"]) {
         expect(readFileSync(join(generated, file), "utf8"), file).toBe(readFileSync(join(school, file), "utf8"));
       }
     } finally {
@@ -66,7 +66,7 @@ describe("a new service", () => {
       expect(check).toMatchObject({ code: 0 });
       expect(check.output).toContain("contracts.lock.json matches all 5 operations");
       expect(tests).toMatchObject({ code: 0 });
-      expect(tests.output).toMatch(/Tests\s+12 passed/);
+      expect(tests.output).toMatch(/Tests\s+15 passed/);
     },
     240_000,
   );

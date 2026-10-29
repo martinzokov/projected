@@ -18,6 +18,15 @@ export const HEADERS = {
   tracestate: "tracestate",
 } as const;
 
+/**
+ * The headers a browser on another origin needs to be allowed: those a caller sends, and those it
+ * reads back. For the CORS layer in front of the handler — Hono's `cors()` in a generated service.
+ */
+export const CORS_HEADERS = {
+  allow: ["content-type", "authorization", HEADERS.messageId, HEADERS.correlationId, HEADERS.causationId, HEADERS.idempotencyKey, HEADERS.traceparent, HEADERS.tracestate],
+  expose: [HEADERS.messageId, HEADERS.correlationId, "retry-after", "www-authenticate"],
+} as const;
+
 export const PLURAL: Record<OperationKind, "commands" | "queries"> = { command: "commands", query: "queries" };
 
 /** `/commands/enlist-student/version/1` */
@@ -95,4 +104,15 @@ export function problemForOperateError(error: OperateError): Problem {
   return error._tag === "UnknownTask"
     ? problem(PROBLEM_TYPES.unknownTask, "Unknown operator task", 404, error.message)
     : problemForDispatchError(error);
+}
+
+/**
+ * The protocol's answer to a body over the size limit, for a body-size layer in front of the
+ * handler — Hono's `bodyLimit()` in a generated service.
+ */
+export function payloadTooLarge(maxBytes: number): Response {
+  return new Response(JSON.stringify(problem(PROBLEM_TYPES.payloadTooLarge, "Payload too large", 413, `At most ${maxBytes} bytes per request`)), {
+    status: 413,
+    headers: { "content-type": "application/problem+json" },
+  });
 }

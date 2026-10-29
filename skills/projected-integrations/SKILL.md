@@ -250,6 +250,11 @@ without — `postgresReadiness(db)`, `transportReadiness("kafka", transport)` �
 `GET /health/ready` tells the truth, and end `main.ts` with `monitorBacklog` (event handler lag)
 and `shutdownGracefully` (drain, then stop). See `docs/operations.md`.
 
+HTTP is served through Hono in `web.ts`: security headers, CORS for the origins in
+`CORS_ORIGINS`, a body limit. Edge concerns of your own (rate limiting, IP rules) are Hono
+middleware there, before the handler; anything an operation's rules depend on — who may call it,
+duplicate protection — belongs in the contract and the dispatcher, never in middleware.
+
 Tables are listed once, in `src/infrastructure/config/migrations.ts`: `postgresMigrator(db)` for
 projected's, `betterAuthMigrator(...)` for better-auth's. An adapter of yours that needs tables
 of its own adds a `schemaMigrator(db, { name, tracks })` there, with forward-only migrations on

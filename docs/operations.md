@@ -45,6 +45,15 @@ is never edited; a fix is a new one.
 Stored data changes shape without any of this: events and states are upgraded when read (see
 the domain modelling skill), and a read model is rebuilt with `projected operate rebuild`.
 
+## The web edge
+
+A service serves HTTP through Hono (`src/infrastructure/config/web.ts`): security headers on
+every response, a body limit (1 MiB, answered with the protocol's `payload-too-large` problem),
+and CORS for the browser origins in `CORS_ORIGINS` (comma-separated; none means same-origin
+only). The same list is better-auth's `trustedOrigins`, so a browser app can sign in from an
+origin it may call. Add edge middleware of your own there — rate limiting, IP rules — before the
+handler.
+
 ## Health
 
 | Route | Answers | Use it for |

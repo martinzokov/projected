@@ -13,6 +13,7 @@
     "mutate": "projected mutate"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.17",
     "@opentelemetry/api": "^1.10.0",
     "@projected/application": "workspace:*",
     "@projected/auth-better-auth": "workspace:*",
@@ -26,6 +27,7 @@
     "@projected/store-memory": "workspace:*",
     "@projected/store-postgres": "workspace:*",
     "better-auth": "^1.7.14",
+    "hono": "^4.13.14",
     "pg": "^8.23.1"
   },
   "devDependencies": {

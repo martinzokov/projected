@@ -41,7 +41,7 @@ export function service(flavour: Flavour, aggregate = "invoice"): string {
   mkdirSync(join(root, "node_modules", ".bin"), { recursive: true });
   symlinkSync(projected, join(root, "node_modules", ".bin", "projected"));
   const installed = join(workspace, "examples", "school-event-sourced", "node_modules");
-  for (const name of ["better-auth", "pg", "@types/pg", "@opentelemetry/api"]) {
+  for (const name of ["better-auth", "pg", "@types/pg", "@opentelemetry/api", "hono", "@hono/node-server"]) {
     mkdirSync(dirname(join(root, "node_modules", name)), { recursive: true });
     symlinkSync(realpathSync(join(installed, name)), join(root, "node_modules", name), "dir");
   }

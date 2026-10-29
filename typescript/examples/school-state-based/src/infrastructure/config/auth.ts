@@ -1,6 +1,7 @@
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { admin, bearer } from "better-auth/plugins";
 import type pg from "pg";
+import { corsOrigins } from "./web.js";
 
 /**
  * better-auth's options, in one place: the service creates better-auth with them, and its
@@ -12,6 +13,8 @@ export function authOptions(env: NodeJS.ProcessEnv, pool?: pg.Pool) {
     baseURL: env.PUBLIC_URL ?? `http://localhost:${env.PORT ?? 3000}`,
     secret: env.AUTH_SECRET ?? "development-only-secret-change-me-0000000000",
     database: pool ?? memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+    // Sign-in from another origin is refused unless CORS lets that origin call the service at all.
+    trustedOrigins: corsOrigins(env),
     emailAndPassword: { enabled: true },
     plugins: [bearer(), admin()],
   };
