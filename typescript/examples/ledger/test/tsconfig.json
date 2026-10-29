@@ -1,0 +1,21 @@
+{
+  "extends": "@projected/architecture/tsconfig/test.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "../.tsbuild/test"
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../src/domain"
+    },
+    {
+      "path": "../src/application"
+    },
+    {
+      "path": "../src/infrastructure"
+    }
+  ]
+}

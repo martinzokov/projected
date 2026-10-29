@@ -98,6 +98,9 @@
       "path": "examples/school-state-based"
     },
     {
+      "path": "examples/ledger"
+    },
+    {
       "path": "evals"
     }
   ]

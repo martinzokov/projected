@@ -1,0 +1,10 @@
+{
+  "extends": "@projected/architecture/tsconfig/domain.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "../../.tsbuild/domain"
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}

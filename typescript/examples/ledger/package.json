@@ -1,0 +1,44 @@
+{
+  "name": "@projected-examples/ledger",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node .tsbuild/infrastructure/config/main.js",
+    "test": "vitest run",
+    "check": "tsc -b && vitest run && projected check",
+    "openapi": "projected openapi",
+    "lock": "projected contracts --update",
+    "catalog": "projected docs",
+    "mutate": "projected mutate",
+    "migrate": "projected migrate",
+    "load": "vitest run --config vitest.load.config.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.17",
+    "@opentelemetry/api": "^1.10.0",
+    "@projected/application": "workspace:*",
+    "@projected/auth-jwt": "workspace:*",
+    "@projected/domain": "workspace:*",
+    "@projected/http": "workspace:*",
+    "@projected/opentelemetry": "workspace:*",
+    "@projected/runtime": "workspace:*",
+    "@projected/store-memory": "workspace:*",
+    "@projected/store-postgres": "workspace:*",
+    "hono": "^4.13.14",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@projected/architecture": "workspace:*",
+    "@projected/cli": "workspace:*",
+    "@projected/testing": "workspace:*",
+    "@stryker-mutator/core": "10.0.0",
+    "@types/node": "^22.19.0",
+    "@types/pg": "^8.23.1",
+    "jose": "^6.2.13",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "description": "A banking ledger built with projected (event-sourced): accounts that never go overdrawn, and transfers carried out as a process."
+}

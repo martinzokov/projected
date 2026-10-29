@@ -76,7 +76,7 @@ another service through a typed client, or through Kafka or NATS.
 | Path | What |
 |---|---|
 | [`spec/`](spec) | the language-neutral protocol ([`protocol.md`](spec/protocol.md)), wire schemas, and black-box [conformance suites](spec/conformance) any implementation can be run against |
-| [`typescript/`](typescript) | the TypeScript implementation: packages and the school example in [each](typescript/examples/school-event-sourced) [flavour](typescript/examples/school-state-based) |
+| [`typescript/`](typescript) | the TypeScript implementation: packages, the school example in [each](typescript/examples/school-event-sourced) [flavour](typescript/examples/school-state-based), and a [banking ledger](typescript/examples/ledger) pilot with a load test |
 | [`skills/`](skills) | AI agent skills for building with projected |
 | [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [third-party APIs](docs/vendors.md), [running a service](docs/operations.md) (health, shutdown, metrics, operator tasks), [coding agents](docs/agents.md) (guard, hooks, evals), [roadmap](docs/roadmap.md) |
 | [`vendor/anti-slop/`](vendor/anti-slop) | vendored copy of anti-slop's skills and configs ([`UPSTREAM.md`](vendor/anti-slop/UPSTREAM.md)) |
@@ -89,7 +89,7 @@ Requires Node 22.12+ and pnpm 10; Docker for the integration tests.
 ```sh
 cd typescript
 pnpm install
-pnpm check                  # build, lint, unit tests, and `projected check` on both examples
+pnpm check                  # build, lint, unit tests, and `projected check` on every example
 docker compose up -d --wait # Postgres, Kafka, NATS
 pnpm test:integration       # every test, including the adapters against the real servers
 ```

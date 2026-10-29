@@ -1,0 +1,15 @@
+{
+  "extends": "@projected/architecture/tsconfig/application.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "../../.tsbuild/application"
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../domain"
+    }
+  ]
+}

@@ -1,0 +1,2623 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ledger",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "commands",
+      "description": "Business operations that change the system."
+    },
+    {
+      "name": "queries",
+      "description": "Business questions about the system's state."
+    },
+    {
+      "name": "system",
+      "description": "Operational endpoints."
+    }
+  ],
+  "paths": {
+    "/commands/open-account/version/1": {
+      "post": {
+        "operationId": "openAccountV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Open an account for a customer, in one currency",
+        "description": "Opening the same account again, for the same holder and currency, is accepted and changes nothing.",
+        "x-projected-access": {
+          "permissions": [
+            "accounts:manage"
+          ]
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenAccountV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/OpenAccountV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "$ref": "#/components/schemas/AccountAlreadyOpened"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/deposit-money/version/1": {
+      "post": {
+        "operationId": "depositMoneyV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Pay money into an account",
+        "description": "Send an Idempotency-Key: a deposit retried with the same key is booked once.",
+        "x-projected-access": {
+          "permissions": [
+            "cash:handle"
+          ]
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepositMoneyV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/DepositMoneyV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/AccountNotOpen"
+                            },
+                            {
+                              "$ref": "#/components/schemas/CurrencyMismatch"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/withdraw-money/version/1": {
+      "post": {
+        "operationId": "withdrawMoneyV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Pay money out of an account, never beyond what is available",
+        "description": "Send an Idempotency-Key: a withdrawal retried with the same key is booked once.",
+        "x-projected-access": {
+          "permissions": [
+            "cash:handle"
+          ]
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawMoneyV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/WithdrawMoneyV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/AccountNotOpen"
+                            },
+                            {
+                              "$ref": "#/components/schemas/CurrencyMismatch"
+                            },
+                            {
+                              "$ref": "#/components/schemas/InsufficientFunds"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/close-account/version/1": {
+      "post": {
+        "operationId": "closeAccountV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Close an account with nothing left in it",
+        "x-projected-access": {
+          "permissions": [
+            "accounts:manage"
+          ]
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseAccountV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/CloseAccountV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/AccountNotOpen"
+                            },
+                            {
+                              "$ref": "#/components/schemas/AccountNotEmpty"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands/make-transfer/version/1": {
+      "post": {
+        "operationId": "makeTransferV1",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Ask to move money from one of your accounts to another account",
+        "description": "The transfer is accepted at once and carried out in the background: follow it with transfer-status. The caller must hold the paying account. The transfer id is the caller's, so a retry never pays twice.",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeTransferV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "value"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        },
+                        "value": {
+                          "$ref": "#/components/schemas/MakeTransferV1Output"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "error"
+                        },
+                        "error": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/TransferToSameAccount"
+                            },
+                            {
+                              "$ref": "#/components/schemas/TransferIdInUse"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/queries/account-balance/version/1": {
+      "post": {
+        "operationId": "accountBalanceV1",
+        "tags": [
+          "queries"
+        ],
+        "summary": "An account's balance and what is available to spend",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountBalanceV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/AccountBalanceV1Output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/queries/transfer-status/version/1": {
+      "post": {
+        "operationId": "transferStatusV1",
+        "tags": [
+          "queries"
+        ],
+        "summary": "Where a transfer has got to",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferStatusV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/TransferStatusV1Output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/queries/account-statement/version/1": {
+      "post": {
+        "operationId": "accountStatementV1",
+        "tags": [
+          "queries"
+        ],
+        "summary": "The money booked in and out of an account in one month",
+        "x-projected-access": "authenticated",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MessageId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/CausationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountStatementV1Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The operation ran. `status` is `ok` with the output, or `error` with one of the business errors this operation declares.",
+            "headers": {
+              "x-message-id": {
+                "$ref": "#/components/headers/MessageId"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/AccountStatementV1Output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/commands": {
+      "post": {
+        "operationId": "commandBatch",
+        "tags": [
+          "commands"
+        ],
+        "summary": "Run several commands in one request",
+        "description": "Items run in order and independently: each has its own outcome, and a failed item does not stop the rest. Not atomic.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "commands"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "commands": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "open-account"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/OpenAccountV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "deposit-money"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/DepositMoneyV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "withdraw-money"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/WithdrawMoneyV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "close-account"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/CloseAccountV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "make-transfer"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/MakeTransferV1Input"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/OpenAccountV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "$ref": "#/components/schemas/AccountAlreadyOpened"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/DepositMoneyV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "oneOf": [
+                                      {
+                                        "$ref": "#/components/schemas/AccountNotOpen"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/CurrencyMismatch"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/WithdrawMoneyV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "oneOf": [
+                                      {
+                                        "$ref": "#/components/schemas/AccountNotOpen"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/CurrencyMismatch"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/InsufficientFunds"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/CloseAccountV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "oneOf": [
+                                      {
+                                        "$ref": "#/components/schemas/AccountNotOpen"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/AccountNotEmpty"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "ok"
+                                  },
+                                  "value": {
+                                    "$ref": "#/components/schemas/MakeTransferV1Output"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "error"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                  "status": {
+                                    "const": "error"
+                                  },
+                                  "error": {
+                                    "oneOf": [
+                                      {
+                                        "$ref": "#/components/schemas/TransferToSameAccount"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/TransferIdInUse"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "$ref": "#/components/schemas/FailedBatchItem"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          }
+        }
+      }
+    },
+    "/queries": {
+      "post": {
+        "operationId": "queryBatch",
+        "tags": [
+          "queries"
+        ],
+        "summary": "Run several queries in one request",
+        "description": "Items run in order and independently: each has its own outcome, and a failed item does not stop the rest. Not atomic.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "queries"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "queries": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "account-balance"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/AccountBalanceV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "transfer-status"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/TransferStatusV1Input"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "type",
+                            "version",
+                            "data"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": {
+                              "const": "account-statement"
+                            },
+                            "version": {
+                              "const": 1
+                            },
+                            "data": {
+                              "$ref": "#/components/schemas/AccountStatementV1Input"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "value"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "status": {
+                                "const": "ok"
+                              },
+                              "value": {
+                                "$ref": "#/components/schemas/AccountBalanceV1Output"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "value"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "status": {
+                                "const": "ok"
+                              },
+                              "value": {
+                                "$ref": "#/components/schemas/TransferStatusV1Output"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "value"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "status": {
+                                "const": "ok"
+                              },
+                              "value": {
+                                "$ref": "#/components/schemas/AccountStatementV1Output"
+                              }
+                            }
+                          },
+                          {
+                            "$ref": "#/components/schemas/FailedBatchItem"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness",
+        "responses": {
+          "200": {
+            "description": "The service is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "healthLive",
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness",
+        "responses": {
+          "200": {
+            "description": "The service is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "healthReady",
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness",
+        "description": "Whether the service should be sent traffic: every readiness check passes, and it is not shutting down.",
+        "responses": {
+          "200": {
+            "description": "Ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ready",
+                        "unready",
+                        "draining"
+                      ]
+                    },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "status"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "up",
+                              "down"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency is down, or the service is draining.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ready",
+                        "unready",
+                        "draining"
+                      ]
+                    },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "status"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "up",
+                              "down"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ValidationIssue": {
+        "type": "object",
+        "required": [
+          "path",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "description": "RFC 9457 problem details. Used only for protocol-level failures, never for business outcomes.",
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            }
+          }
+        }
+      },
+      "FailedBatchItem": {
+        "type": "object",
+        "required": [
+          "status",
+          "problem"
+        ],
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "problem": {
+            "$ref": "#/components/schemas/ProblemDetails"
+          }
+        }
+      },
+      "OpenAccountV1Input": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "holder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The customer's user id at the identity provider"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        },
+        "required": [
+          "accountId",
+          "holder",
+          "currency"
+        ]
+      },
+      "OpenAccountV1Output": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "AccountAlreadyOpenedData": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "AccountAlreadyOpened": {
+        "type": "object",
+        "description": "An account with this id exists. Opening it again with the same holder and currency is accepted.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "AccountAlreadyOpened"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountAlreadyOpenedData"
+          }
+        }
+      },
+      "DepositMoneyV1Input": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "amount": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 100000000000,
+            "description": "In the currency's minor unit"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140
+          }
+        },
+        "required": [
+          "accountId",
+          "amount",
+          "currency",
+          "reference"
+        ]
+      },
+      "DepositMoneyV1Output": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "available": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "balance",
+          "available"
+        ],
+        "additionalProperties": false
+      },
+      "AccountNotOpenData": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "AccountNotOpen": {
+        "type": "object",
+        "description": "The account was never opened, or has been closed.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "AccountNotOpen"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountNotOpenData"
+          }
+        }
+      },
+      "CurrencyMismatchData": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountCurrency": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountCurrency",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "CurrencyMismatch": {
+        "type": "object",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "CurrencyMismatch"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CurrencyMismatchData"
+          }
+        }
+      },
+      "WithdrawMoneyV1Input": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "amount": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 100000000000,
+            "description": "In the currency's minor unit"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140
+          }
+        },
+        "required": [
+          "accountId",
+          "amount",
+          "currency",
+          "reference"
+        ]
+      },
+      "WithdrawMoneyV1Output": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "available": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "balance",
+          "available"
+        ],
+        "additionalProperties": false
+      },
+      "InsufficientFundsData": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "available": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "requested": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "accountId",
+          "available",
+          "requested"
+        ],
+        "additionalProperties": false
+      },
+      "InsufficientFunds": {
+        "type": "object",
+        "description": "Accounts never go overdrawn: the amount exceeds what is available, holds deducted.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "InsufficientFunds"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/InsufficientFundsData"
+          }
+        }
+      },
+      "CloseAccountV1Input": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "CloseAccountV1Output": {
+        "type": "object",
+        "properties": {
+          "closed": {
+            "type": "boolean",
+            "description": "False when it was already closed"
+          }
+        },
+        "required": [
+          "closed"
+        ],
+        "additionalProperties": false
+      },
+      "AccountNotEmptyData": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "transfersInFlight": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "accountId",
+          "balance",
+          "transfersInFlight"
+        ],
+        "additionalProperties": false
+      },
+      "AccountNotEmpty": {
+        "type": "object",
+        "description": "Only an account with a zero balance and no transfer in flight can be closed.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "AccountNotEmpty"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountNotEmptyData"
+          }
+        }
+      },
+      "MakeTransferV1Input": {
+        "type": "object",
+        "properties": {
+          "transferId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "amount": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 100000000000,
+            "description": "In the currency's minor unit"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        },
+        "required": [
+          "transferId",
+          "from",
+          "to",
+          "amount",
+          "currency"
+        ]
+      },
+      "MakeTransferV1Output": {
+        "type": "object",
+        "properties": {
+          "transferId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transferId"
+        ],
+        "additionalProperties": false
+      },
+      "TransferToSameAccountData": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "TransferToSameAccount": {
+        "type": "object",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "TransferToSameAccount"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TransferToSameAccountData"
+          }
+        }
+      },
+      "TransferIdInUseData": {
+        "type": "object",
+        "properties": {
+          "transferId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transferId"
+        ],
+        "additionalProperties": false
+      },
+      "TransferIdInUse": {
+        "type": "object",
+        "description": "Requesting the same transfer again is accepted; reusing its id for another transfer is not.",
+        "required": [
+          "type",
+          "message",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "TransferIdInUse"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TransferIdInUseData"
+          }
+        }
+      },
+      "AccountBalanceV1Input": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "AccountBalanceV1Output": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "holder": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  },
+                  "balance": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "Booked money, in minor units"
+                  },
+                  "available": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "The balance less outgoing transfers in flight"
+                  },
+                  "incoming": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "Incoming transfers not yet booked"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "holder",
+                  "currency",
+                  "status",
+                  "balance",
+                  "available",
+                  "incoming"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "account"
+        ],
+        "additionalProperties": false
+      },
+      "TransferStatusV1Input": {
+        "type": "object",
+        "properties": {
+          "transferId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          }
+        },
+        "required": [
+          "transferId"
+        ]
+      },
+      "TransferStatusV1Output": {
+        "type": "object",
+        "properties": {
+          "transfer": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "transferId": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "requestedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "completed",
+                      "rejected",
+                      "failed"
+                    ]
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "insufficient-funds",
+                          "not-account-holder",
+                          "currency-mismatch",
+                          "payer-account-not-open",
+                          "payee-account-not-open"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "transferId",
+                  "from",
+                  "to",
+                  "amount",
+                  "currency",
+                  "requestedAt",
+                  "status",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "transfer"
+        ],
+        "additionalProperties": false
+      },
+      "AccountStatementV1Input": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+          }
+        },
+        "required": [
+          "accountId",
+          "month"
+        ]
+      },
+      "AccountStatementV1Output": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entry": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The entry's place in the account's history"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "deposit",
+                    "withdrawal",
+                    "transfer-sent",
+                    "transfer-received"
+                  ]
+                },
+                "amount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Signed: money in is positive, money out negative"
+                },
+                "reference": {
+                  "type": "string",
+                  "description": "The deposit's or withdrawal's reference, or the transfer id"
+                },
+                "counterparty": {
+                  "description": "The account on the other side of a transfer",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bookedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                }
+              },
+              "required": [
+                "entry",
+                "kind",
+                "amount",
+                "reference",
+                "counterparty",
+                "bookedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "An access token from the bank's identity provider."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The body is not valid JSON or does not match the operation's input schema.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The body is not `application/json`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The batch has more items than the service accepts.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "The operation needs an authenticated caller and the request has no valid credentials.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The caller lacks a permission the operation requires (see `x-projected-access`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Retry later: the command raced with another change to the same data (`concurrency-conflict`), or a request with the same idempotency key is still running (`request-in-progress`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "IdempotencyKeyReused": {
+        "description": "The idempotency key was already used for a different request. Use a new key.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "A defect in the service. Details are logged, not returned.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "A dependency of the service answered in a way it cannot handle.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "A dependency of the service is unreachable. Retry later.",
+        "headers": {
+          "retry-after": {
+            "description": "Seconds to wait before retrying.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "MessageId": {
+        "name": "x-message-id",
+        "in": "header",
+        "required": false,
+        "description": "Unique id of this request. Generated when absent.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CorrelationId": {
+        "name": "x-correlation-id",
+        "in": "header",
+        "required": false,
+        "description": "Id shared by every message in one business flow. Defaults to the message id.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CausationId": {
+        "name": "x-causation-id",
+        "in": "header",
+        "required": false,
+        "description": "Id of the message that caused this request.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "idempotency-key",
+        "in": "header",
+        "required": false,
+        "description": "Caller-chosen key identifying this command across retries. Passed to the handler as `metadata.idempotencyKey`.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "headers": {
+      "MessageId": {
+        "description": "Id of this request.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CorrelationId": {
+        "description": "Id shared by every message in this business flow.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

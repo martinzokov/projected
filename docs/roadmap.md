@@ -16,7 +16,8 @@ steps, roughly in order of value:
   notes per store): KurrentDB (events, checkpoints), MongoDB (all ports), Redis (idempotency,
   checkpoints, documents), Convex (documents, events via mutations).
 - **Higher append throughput** on Postgres by tracking in-flight transactions instead of the
-  ordering lock, if a single schema ever needs it.
+  ordering lock. The ledger's load test meets the lock first: about 420 appends a second per
+  schema where a database round trip takes a millisecond, eight per transfer.
 
 ## Delivery
 

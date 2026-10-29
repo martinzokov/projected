@@ -1,0 +1,21 @@
+{
+  "flavour": "event-sourced",
+  "mutation": {
+    "threshold": 90
+  },
+  "rules": {
+    "single-aggregate-commands": {
+      "allow": [
+        "src/application/usecase/transfer-process.ts"
+      ]
+    }
+  },
+  "securitySchemes": {
+    "bearer": {
+      "type": "http",
+      "scheme": "bearer",
+      "bearerFormat": "JWT",
+      "description": "An access token from the bank's identity provider."
+    }
+  }
+}

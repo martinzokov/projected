@@ -8,7 +8,7 @@ load the `projected` skill.
 
 - `spec/` — language-neutral protocol (`protocol.md`, `wire.schema.json`). Normative.
 - `typescript/` — pnpm workspace: `packages/*` (the framework) and `examples/*` (apps: the school
-  in each flavour).
+  in each flavour, and the banking `ledger` pilot with its load test, `pnpm load`).
 - `skills/` — distributable agent skills; `.claude/skills/` links to them and to `vendor/`.
 - `vendor/anti-slop/` — vendored upstream. Never edit by hand: run `scripts/sync-anti-slop.sh`.
 - `docs/` — architecture and decisions, enforcement table, roadmap.
@@ -30,8 +30,9 @@ cd typescript && pnpm install && pnpm check
 `pnpm check` = `tsc -b` + ESLint + vitest + `projected check` in every example. It must be green
 before you finish. Individual steps: `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm exec vitest run <path>`.
 The architecture fitness tests compile fixtures with `tsc -b`, so build before running them.
-`pnpm mutate` mutation-tests both examples (slow; CI runs it): a change to `@projected/testing` or
-to an example's tests must keep their scores above the threshold in their `projected.json`.
+`pnpm mutate` mutation-tests every example (slow; CI runs it): a change to `@projected/testing` or
+to an example's tests must keep their scores above the threshold in their `projected.json`. A change to the event store,
+the repository or event handling should keep the ledger's load test green, and not slower.
 
 Adapter tests against real servers are skipped unless their variables are set. When you touch a
 store or transport, run them too:

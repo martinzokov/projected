@@ -1,0 +1,5 @@
+node_modules/
+.tsbuild/
+.vitest-cache/
+.stryker-tmp/
+reports/

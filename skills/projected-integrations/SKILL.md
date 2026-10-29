@@ -99,6 +99,11 @@ resumes at that event on the next catch-up (inline failures reach `onEventHandli
 that throws, or meets an event it cannot decode, is a defect — reported to `onDefect`, and
 stuck at that event until the code is fixed. Return Results; never throw.
 
+A handler sees one event at a time, in log order. One whose work on a stream never waits on
+another stream's events — a process keeping each instance in its own stream — can set
+`concurrency: 16`: each stream's events still arrive in order, but streams overlap. Leave it at
+1 for a read model built across streams.
+
 ## Policies: reacting to events
 
 A policy is an event handler that calls ports instead of updating a read model — send a welcome
@@ -114,6 +119,12 @@ export const welcomePolicy = (deps: { mailer: Mailer }) =>
     },
   });
 ```
+
+A policy that drives a process through several aggregates — a transfer that holds funds on one
+account, then credits another — writes an aggregate and then the process's own, step by step: a
+saga step, listed under `"allow"` for `single-aggregate-commands` in `projected.json`. Make every
+step safe to repeat: run it only while the process is at the step before, and make each effect a
+no-op the second time. `typescript/examples/ledger` (`transfer-process.ts`) is the worked example.
 
 ## Calling another projected service
 

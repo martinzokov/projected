@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 2,
+  "service": "ledger",
+  "flavour": "event-sourced",
+  "operations": {
+    "command close-account@1": "sha256-a3wRg2d6pxLgO+0W0ODAEgF2ovRrmxym+ZqBiWWqo7g=",
+    "command deposit-money@1": "sha256-iv8VbEb2HuHGAkpnAq0mcBKwsQFsQqey1ORlxO13ma8=",
+    "command make-transfer@1": "sha256-swXiXmCB1aF0A1G61jjJXQHPQvzJQTD/ubM1/m1o//0=",
+    "command open-account@1": "sha256-sBk3i+3KgcgEZEUD6moUoQNuMCE51whmVsP41lqoJTA=",
+    "command withdraw-money@1": "sha256-hivCdk5ZAMryQvK+f7TsEOIFwuMxlDRIZjUhd/iwEqo=",
+    "query account-balance@1": "sha256-MRSydx/llpB3nHvoiVzVDKBlzBBun585bfZ0oyzjJCQ=",
+    "query account-statement@1": "sha256-EIpFPZPQf44xMC3IV8MweUxV+i6OIChd95ty07qdQV4=",
+    "query transfer-status@1": "sha256-wvetRjSuZI1fsInUKfm965VuOY7xQDiRRN+wBfa2RLE="
+  }
+}
