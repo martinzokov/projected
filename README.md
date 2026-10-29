@@ -131,8 +131,8 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 | `@projected/store-postgres` | infrastructure | PostgreSQL checkpoints, idempotency, documents; event store or state store with outbox per flavour; typed queries (Kysely) and migrators for its tables |
 | `@projected/auth-better-auth` | infrastructure | better-auth sessions as principals, its routes, OpenAPI security schemes, a migrator for its tables |
 | `@projected/opentelemetry` | infrastructure | the Telemetry port on OpenTelemetry |
-| `@projected/runtime` | infrastructure | system clock, UUIDs, background event-handler polling, event-handler lag gauges, graceful shutdown, tables ready at start |
-| `@projected/testing` | tests | given/when/then, property-based tests from zod schemas (fast-check), fixed clock, sequential ids, test authenticator and telemetry, conformance suites for every store and transport |
+| `@projected/runtime` | infrastructure | system clock, UUIDs, JSON logs, background event-handler polling, event-handler lag gauges, graceful shutdown, tables ready at start |
+| `@projected/testing` | tests | given/when/then, property-based tests from zod schemas (fast-check), fixed clock, sequential ids, test authenticator, telemetry and logger, conformance suites for every store and transport |
 | `@projected/architecture` | tooling | layer tsconfig presets, dependency-cruiser and ESLint rules, layout check |
 | `@projected/cli` | tooling | `projected new` (a service, aggregates, commands, queries, ports and event handlers, wired and tested), `check`, `arch`, `openapi`, `contracts`, `docs` (a service catalog with Mermaid diagrams, derived from the code), `vendor` (typed clients for third-party OpenAPI specs), `mutate` (mutation testing with Stryker), `operate` (operator tasks on a running service), `migrate` (tables up to date as a deploy step), `guard` and `agents install` (checks and hooks for coding agents), `conformance` (the black-box suites against a running service) |
 

@@ -54,6 +54,24 @@ only). The same list is better-auth's `trustedOrigins`, so a browser app can sig
 origin it may call. Add edge middleware of your own there — rate limiting, IP rules — before the
 handler.
 
+## Logs
+
+A service logs through the `Logger` port (`@projected/application`): a message and fields, never a
+string with values spliced in. `jsonLogger` from `@projected/runtime` writes one JSON object per
+line to standard output — `time`, `level`, `message`, the service, the record's fields — and the
+`trace_id` and `span_id` of the span it was written in, so a record leads to its trace. Errors
+become `{ type, message, …their data, stack, cause }`. `LOG_LEVEL` picks the threshold (`debug`,
+`info`, `warn`, `error`; `info` by default).
+
+```json
+{"time":"2026-10-29T09:12:03.120Z","level":"info","message":"request","service":"school","method":"POST","path":"/commands/enlist-student/version/2","status":200,"duration_ms":14,"message_id":"9f…","correlation_id":"9f…"}
+{"time":"2026-10-29T09:12:04.551Z","level":"error","message":"defect","service":"school","trace_id":"4bf9…","span_id":"00f0…","error":{"type":"OperationDefect","message":"handler threw: …","operation":"command enlist-student@2","stack":"…"}}
+```
+
+The generated `main.ts` wires it everywhere: each HTTP request (health probes left out), defects,
+event handlers that fell behind, the poller, the backlog monitor, the brokers and the shutdown
+sequence. In tests, `recordingLogger()` from `@projected/testing` keeps the records.
+
 ## Health
 
 | Route | Answers | Use it for |

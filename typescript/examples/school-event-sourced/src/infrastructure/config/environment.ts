@@ -6,7 +6,7 @@ import { natsTransport } from "@projected/nats";
 import { prepareSchema } from "@projected/runtime";
 import { betterAuth } from "better-auth";
 import pg from "pg";
-import type { Clock, ReadinessCheck } from "@projected/application/event-sourced";
+import type { Clock, Logger, ReadinessCheck } from "@projected/application/event-sourced";
 import { authOptions } from "./auth.js";
 import { migrators } from "./migrations.js";
 
@@ -21,7 +21,7 @@ import { migrators } from "./migrations.js";
  *   MIGRATE_ON_START  "false" where `projected migrate` runs before each rollout: the service
  *                     then only checks that its tables are current, and refuses to start if not
  */
-export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process.env) {
+export async function environment(clock: Clock, log: Logger, env: NodeJS.ProcessEnv = process.env) {
   const pool = env.DATABASE_URL === undefined ? undefined : new pg.Pool({ connectionString: env.DATABASE_URL });
   const db = pool === undefined ? undefined : fromPool(pool);
   if (pool !== undefined) {
@@ -41,8 +41,8 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
   const auth = betterAuth(authOptions(env, pool));
 
   const transports: Array<{ name: string; transport: MessageTransport & { close(): Promise<void> } }> = [];
-  if (env.KAFKA_BROKERS !== undefined) transports.push({ name: "kafka", transport: kafkaTransport({ brokers: env.KAFKA_BROKERS.split(","), clientId: "school" }) });
-  if (env.NATS_URL !== undefined) transports.push({ name: "nats", transport: natsTransport({ servers: env.NATS_URL }) });
+  if (env.KAFKA_BROKERS !== undefined) transports.push({ name: "kafka", transport: kafkaTransport({ brokers: env.KAFKA_BROKERS.split(","), clientId: "school", onError: (error) => log.warn("kafka", { error }) }) });
+  if (env.NATS_URL !== undefined) transports.push({ name: "nats", transport: natsTransport({ servers: env.NATS_URL, onError: (error) => log.warn("nats", { error }) }) });
   const relays = transports.map(({ transport }, index) => eventRelay(transport, { name: `school-events-${index + 1}`, topic: "school.events" }));
   // Not ready while the database or a broker the events go to is unreachable.
   const readiness: ReadinessCheck[] = [

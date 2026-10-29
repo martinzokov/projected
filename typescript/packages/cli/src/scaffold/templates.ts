@@ -325,7 +325,8 @@ export async function environment(clock: Clock, env: NodeJS.ProcessEnv = process
 }
 `,
     "src/infrastructure/config/web.ts": `import { serve } from "@hono/node-server";
-import { CORS_HEADERS, payloadTooLarge, type FetchHandler } from "@projected/http";
+import type { Logger } from "@projected/application";
+import { CORS_HEADERS, HEADERS, payloadTooLarge, type FetchHandler } from "@projected/http";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -336,19 +337,38 @@ export interface WebOptions {
   readonly corsOrigins: readonly string[];
   /** Larger request bodies get 413. Defaults to 1 MiB. */
   readonly maxBodyBytes?: number;
+  /** Where each request is logged, with its status and message ids. Health probes are not. */
+  readonly log?: Logger;
 }
 
 /** The origins listed in CORS_ORIGINS, comma-separated: \`https://app.example.com,https://admin.example.com\`. */
 export const corsOrigins = (env: NodeJS.ProcessEnv): string[] => (env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter((origin) => origin !== "");
 
 /**
- * The service on the web: the projected handler behind Hono's middleware — security headers, CORS
- * for the origins listed, a body size limit. Add middleware of your own here, before the handler;
- * access rules, idempotency and tracing are the handler's, so that messaging gets them too.
+ * The service on the web: the projected handler behind Hono's middleware — a request log, security
+ * headers, CORS for the origins listed, a body size limit. Add middleware of your own here, before
+ * the handler; access rules, idempotency and tracing are the handler's, so that messaging gets them
+ * too.
  */
 export function web(api: FetchHandler, options: WebOptions): Hono {
   const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
   const app = new Hono();
+  const log = options.log;
+  if (log !== undefined) {
+    app.use(async (c, next) => {
+      const started = performance.now();
+      await next();
+      if (c.req.path.startsWith("/health")) return;
+      log.info("request", {
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        duration_ms: Math.round(performance.now() - started),
+        message_id: c.res.headers.get(HEADERS.messageId) ?? undefined,
+        correlation_id: c.res.headers.get(HEADERS.correlationId) ?? undefined,
+      });
+    });
+  }
   app.use(secureHeaders());
   if (options.corsOrigins.length > 0) {
     app.use(
@@ -382,23 +402,25 @@ export function listen(app: Hono, port: number): Promise<{ readonly url: string;
 import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, rolesOf } from "@projected/auth-better-auth";
 import { httpHandler } from "@projected/http";
 import { openTelemetry } from "@projected/opentelemetry";
-import { monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
+import { jsonLogger, logLevel, monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { compose${Name} } from "./${name}.js";
 import { corsOrigins, listen, web } from "./web.js";
 
 const clock = systemClock();
-const infrastructure = await environment(clock);
 // Spans go wherever the OpenTelemetry SDK sends them; register one (e.g. @opentelemetry/sdk-node) to export.
 const telemetry = openTelemetry();
+// One JSON line per record on standard output, with the trace it belongs to. LOG_LEVEL: debug, info, warn, error.
+const log = jsonLogger({ level: logLevel(process.env.LOG_LEVEL), fields: { service: "${name}" }, telemetry });
+const infrastructure = await environment(clock);
 
 const app = compose${Name}({
   ...infrastructure,
   clock,
   ids: randomIds(),
   telemetry,
-  onDefect: (defect) => console.error("defect", defect),
-  onEventHandlingError: (error, handler) => console.error(\`event handler \${handler}\`, error.message),
+  onDefect: (defect) => log.error("defect", { error: defect }),
+  onEventHandlingError: (error, handler) => log.warn("event handler fell behind", { handler, error }),
 });
 
 // Signed-in users hold the permissions returned here. Admins operate the service (\`projected operate\`);
@@ -413,15 +435,15 @@ const api = httpHandler(app, {
   openApi: { version: "0.1.0", securitySchemes: betterAuthSecuritySchemes() },
 });
 // CORS_ORIGINS lists the browser origins that may call the service; none means the same origin only.
-const server = await listen(web(api, { corsOrigins: corsOrigins(process.env) }), Number(process.env.PORT ?? 3000));
-console.log(\`${name} is listening on \${server.url} — OpenAPI document at \${server.url}/openapi.json\`);
+const server = await listen(web(api, { corsOrigins: corsOrigins(process.env), log }), Number(process.env.PORT ?? 3000));
+log.info("listening", { url: server.url, openapi: \`\${server.url}/openapi.json\` });
 
 // Event handlers catch up in the background too, picking up whatever a failed inline catch-up
 // left behind. A relay to a broker belongs here only: leave it out of \`eventHandling.inline\`.
-const poller = startPolling(app, { onError: (error) => console.error("event handling", error.message) });
+const poller = startPolling(app, { onError: (error) => log.warn("event handling", { error }) });
 
 // Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
-const backlog = monitorBacklog(app, { clock, onError: (error) => console.error("backlog", error.message) });
+const backlog = monitorBacklog(app, { clock, onError: (error) => log.warn("backlog", { error }) });
 
 // On SIGTERM: report draining, give load balancers SHUTDOWN_GRACE_MS to notice, stop taking
 // requests, finish those in flight, then close connections.
@@ -430,7 +452,7 @@ shutdownGracefully({
   intake: [server, poller, backlog],
   close: infrastructure.close,
   graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
-  log: (message) => console.log(message),
+  log: (message) => log.info(message),
 });
 `,
     [`test/${name}.ts`]: `import { httpHandler } from "@projected/http";
@@ -473,6 +495,7 @@ export function test${Name}() {
 }
 `,
     "test/web.test.ts": `import { describe, expect, it } from "vitest";
+import { recordingLogger } from "@projected/testing/${flavour}";
 import { web } from "../src/infrastructure/config/web.js";
 import { test${Name} } from "./${name}.js";
 
@@ -507,6 +530,17 @@ describe("${name} on the web", () => {
 
     expect(response.status).toBe(413);
     expect(await response.json()).toMatchObject({ type: "urn:projected:problem:payload-too-large" });
+  });
+
+  it("logs each request with its status and message ids, and leaves health probes out", async () => {
+    const log = recordingLogger();
+    const logged = web(test${Name}().handler, { corsOrigins: [], log });
+
+    await logged.request("/health/live");
+    await logged.request("/commands", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commands: [] }) });
+
+    expect(log.records).toHaveLength(1);
+    expect(log.records[0]).toMatchObject({ message: "request", fields: { method: "POST", path: "/commands", status: 200, message_id: "request-1" } });
   });
 });
 `,

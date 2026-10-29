@@ -250,6 +250,11 @@ without — `postgresReadiness(db)`, `transportReadiness("kafka", transport)` �
 `GET /health/ready` tells the truth, and end `main.ts` with `monitorBacklog` (event handler lag)
 and `shutdownGracefully` (drain, then stop). See `docs/operations.md`.
 
+Log through the `Logger` the composition root creates (`jsonLogger`), never `console`: a message
+and fields — `log.warn("payment declined", { orderId, error })` — so the logs stay searchable and
+carry the trace. Use cases and domain code do not log; they return Results, and the composition
+root logs what matters.
+
 HTTP is served through Hono in `web.ts`: security headers, CORS for the origins in
 `CORS_ORIGINS`, a body limit. Edge concerns of your own (rate limiting, IP rules) are Hono
 middleware there, before the handler; anything an operation's rules depend on — who may call it,

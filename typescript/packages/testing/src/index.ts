@@ -8,6 +8,7 @@
  */
 export { fixedClock, sequentialIds, type FixedClock } from "./doubles.js";
 export { principal, tokenAuthenticator } from "./auth.js";
+export { recordingLogger, type LogRecord, type RecordingLogger } from "./logger.js";
 export { recordingTelemetry, type RecordedSpan, type RecordingTelemetry } from "./telemetry.js";
 export { checkpointStoreConformance, documentStoreConformance, idempotencyStoreConformance } from "./store-conformance.js";
 export { fc, forAll, fromSchema, type ForAllOptions } from "./properties.js";

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { recordingLogger } from "@projected/testing/state-based";
 import { web } from "../src/infrastructure/config/web.js";
 import { testSchool } from "./school.js";
 
@@ -48,5 +49,24 @@ describe("the school on the web", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("logs each request with its status and message ids, and leaves health probes out", async () => {
+    const log = recordingLogger();
+    const logged = web(testSchool().handler, { corsOrigins: [], log });
+
+    await logged.request("/health/live");
+    await logged.request("/commands/enlist-student/version/2", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer registrar-token" },
+      body: JSON.stringify({ studentId: "s-1", firstname: "Ada", lastname: "Lovelace", joiningDate: "2023-09-22" }),
+    });
+
+    expect(log.records).toHaveLength(1);
+    expect(log.records[0]).toMatchObject({
+      level: "info",
+      message: "request",
+      fields: { method: "POST", path: "/commands/enlist-student/version/2", status: 200, message_id: "request-1", correlation_id: "request-1" },
+    });
   });
 });

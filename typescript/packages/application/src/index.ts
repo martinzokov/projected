@@ -77,6 +77,7 @@ export type {
   SchemaMigrator,
   RecordedEvent,
 } from "./ports.js";
+export { noLogger, type LogFields, type LogLevel, type Logger } from "./logger.js";
 export {
   currentTrace,
   noTelemetry,

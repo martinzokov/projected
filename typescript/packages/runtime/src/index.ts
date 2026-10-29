@@ -69,3 +69,4 @@ export { monitorBacklog, type BacklogMonitor, type BacklogMonitorOptions } from 
 export { shutdownGracefully, type Intake, type Shutdown, type ShutdownOptions } from "./shutdown.js";
 export { prepareSchema, type PrepareSchemaOptions } from "./schema.js";
 export { runMigrations, type MigrationRun } from "./migrate.js";
+export { jsonLogger, logLevel, type JsonLoggerOptions } from "./logger.js";
