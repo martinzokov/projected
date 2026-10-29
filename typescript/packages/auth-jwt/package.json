@@ -1,0 +1,26 @@
+{
+  "name": "@projected/auth-jwt",
+  "version": "0.1.0",
+  "description": "JWT and OpenID Connect for projected: an Authenticator that verifies bearer tokens against an issuer's keys (Auth0, Clerk, Cognito, Keycloak, WorkOS, Entra ID) and turns their claims into principals.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "dependencies": {
+    "@projected/application": "workspace:*",
+    "jose": "^6.2.13"
+  },
+  "devDependencies": {
+    "@projected/http": "workspace:*",
+    "@projected/testing": "workspace:*"
+  }
+}

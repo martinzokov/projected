@@ -19,7 +19,7 @@ on both sides (see "Results at the boundary" below).
 | store read models | your own (`StudentDirectory`) over a `DocumentStore` | your adapter in `adapter/driven/<name>` |
 | current time / ids | `Clock`, `IdGenerator` (framework) | `@projected/runtime`, `@projected/testing` |
 | tracing | `Telemetry` (framework) | `@projected/opentelemetry` |
-| who is calling | `Authenticator` (framework, used by transports) | `@projected/auth-better-auth` |
+| who is calling | `Authenticator` (framework, used by transports) | `@projected/auth-better-auth` (sessions), `@projected/auth-jwt` (tokens from an OIDC/OAuth issuer) |
 | another projected service | `RemoteService<typeof theirContracts>` (framework) | `httpService`, `inProcessService` |
 | send a command asynchronously | `CommandQueue<typeof contracts>` (framework) | `commandQueue` from `@projected/messaging` |
 | a third-party HTTP API | your own, e.g. `PaymentGateway` | your adapter using `httpClient` from `@projected/http` |

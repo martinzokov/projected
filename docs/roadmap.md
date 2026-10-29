@@ -28,8 +28,8 @@ steps, roughly in order of value:
 
 ## Platform
 
-- **More auth providers**: a generic JWT/OIDC authenticator (Auth0, Clerk, WorkOS, Cognito,
-  Keycloak), then provider packages where claims need mapping; service-to-service credentials.
+- **More auth providers** where tokens are not JWTs or claims need more than a mapping;
+  `@projected/auth-jwt` covers OpenID Connect and OAuth issuers.
 - **Typed client generation for other languages** from `openapi.json`.
 - Publishing packages to npm; `npx skills add martinzokov/projected` for the skills.
 

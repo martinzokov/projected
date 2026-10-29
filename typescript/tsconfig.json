@@ -74,6 +74,12 @@
       "path": "packages/auth-better-auth/test"
     },
     {
+      "path": "packages/auth-jwt"
+    },
+    {
+      "path": "packages/auth-jwt/test"
+    },
+    {
       "path": "packages/kafka"
     },
     {

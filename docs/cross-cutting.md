@@ -51,13 +51,33 @@ httpHandler(app, {
 
 `permissions: (session) => [...]` derives permissions any other way (organizations, teams).
 
+### JWT and OpenID Connect
+
+`@projected/auth-jwt` verifies `Authorization: Bearer <jwt>` against an issuer's signing keys —
+Auth0, Clerk, Cognito, Keycloak, WorkOS, Entra ID, or your own — found through its OpenID
+Connect discovery document:
+
+```ts
+const authenticator = jwtAuthenticator({
+  issuer: "https://bank.eu.auth0.com/",
+  audience: "https://api.ledger.example",
+  permissions: (claims) => claims.permissions ?? [], // the default; map roles or scopes here
+});
+httpHandler(app, { authenticator, openApi: { securitySchemes: jwtSecuritySchemes({ issuer }) } });
+```
+
+A token that verifies — the issuer's signature, its `iss`, this service's `aud`, not expired —
+becomes a principal: `sub` as its id, the claims kept. Permissions come from the `permissions`
+claim (Auth0's RBAC), else `scope` or `scp`; a client-credentials token is a `"service"`
+principal, so service-to-service calls need nothing else. A missing, expired or forged token is
+anonymous, and each operation's `access` decides; an issuer that cannot be reached is
+`DependencyUnavailable` (503), never mistaken for an anonymous caller.
+
 ### Other providers
 
 An authenticator is one function from request headers to a principal, so each provider is a
-small package: `@projected/auth-<provider>`. Likely next: a generic JWT/OIDC authenticator (JWKS
-verification with `jose`) covering Auth0, Clerk, WorkOS, Cognito and Keycloak in one adapter;
-then provider-specific packages where claims need mapping. Tests use `tokenAuthenticator` from
-`@projected/testing`.
+small package: `@projected/auth-<provider>`, for providers whose tokens are not JWTs or whose
+claims need more than a mapping. Tests use `tokenAuthenticator` from `@projected/testing`.
 
 ## Duplicate command protection
 
