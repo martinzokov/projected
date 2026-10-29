@@ -15,12 +15,15 @@ export async function followWhileWriting(
   const reader = (async () => {
     let position = 0;
     for (;;) {
+      // Read before checking, not after: an empty batch only proves the reader caught up if every
+      // write had finished before the read began.
+      const writesDone = !writing;
       const batch: readonly RecordedEvent[] = (await log.readAll({ after: position, limit: 50 })).unwrap();
       for (const event of batch) {
         seen.push(event.globalPosition);
         position = event.globalPosition;
       }
-      if (!writing && batch.length === 0) return;
+      if (writesDone && batch.length === 0) return;
     }
   })();
   await Promise.all(
