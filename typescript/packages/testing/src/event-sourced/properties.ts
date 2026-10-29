@@ -1,4 +1,5 @@
 import type { AnyAggregate, AnyEventDefinition, EventOf } from "@projected/application/event-sourced";
+import { expect } from "vitest";
 import { fc, forAll, fromSchema, type ForAllOptions } from "../properties.js";
 
 /**
@@ -12,9 +13,16 @@ export function anyHistory<A extends AnyAggregate>(aggregate: A, options: { read
   return fc.array(event, { maxLength: options.maxLength ?? 6 });
 }
 
-/** The property every event-sourced aggregate must have: folding any history never throws. */
+/**
+ * The property every event-sourced aggregate must have: folding any history never throws. For
+ * an aggregate with snapshots, also that a snapshot of any state it reaches restores that state
+ * exactly — through JSON and the snapshot's schema, as a load from a snapshot store would.
+ */
 export function everyHistoryFolds(aggregate: AnyAggregate, options: ForAllOptions & { readonly maxLength?: number } = {}): void {
   forAll([anyHistory(aggregate, options)], (history) => {
-    aggregate.fold(history);
+    const state: unknown = aggregate.fold(history);
+    if (aggregate.snapshot === undefined) return;
+    const restored = aggregate.snapshot.schema.safeParse(JSON.parse(JSON.stringify(state)));
+    expect(restored.success ? restored.data : restored.error.issues, `a snapshot of ${aggregate.name}'s state restores it`).toEqual(state);
   }, options);
 }

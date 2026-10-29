@@ -65,13 +65,8 @@ export function postgresStateStore(client: PostgresClient, options: PostgresOpti
             const emitted = row?.event_count ?? 0;
             if (expectedVersion !== "any" && expectedVersion !== actual) throw new Conflict(actual);
 
-            let recorded: RecordedEvent[] = [];
-            if (write.events.length > 0) {
-              await advisoryLock(tx, "projected-outbox", schema);
-              const inserted = await tx.insertInto("outbox").values(write.events.map(eventRow(key, emitted))).returning(COLUMNS).execute();
-              recorded = inserted.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion);
-            }
             const version = actual + 1;
+            // Before the ordering lock: the row is ours already, and the lock is held through commit.
             await tx
               .updateTable("states")
               .set({
@@ -83,7 +78,10 @@ export function postgresStateStore(client: PostgresClient, options: PostgresOpti
               })
               .where("key", "=", key)
               .execute();
-            return { version, events: recorded };
+            if (write.events.length === 0) return { version, events: [] };
+            await advisoryLock(tx, "projected-outbox", schema);
+            const inserted = await tx.insertInto("outbox").values(write.events.map(eventRow(key, emitted))).returning(COLUMNS).execute();
+            return { version, events: inserted.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion) };
           })
           .catch((error: unknown) => (error instanceof Conflict ? error : Promise.reject(error))),
       );

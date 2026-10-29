@@ -14,6 +14,7 @@ import {
 } from "@projected/application/state-based";
 import { randomUUID } from "node:crypto";
 import { asJson } from "../json.js";
+import { readAfter } from "../log.js";
 
 export interface InMemoryStateStoreOptions {
   readonly clock?: Clock;
@@ -102,7 +103,7 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
       return Result.ok({ version, events: recorded });
     },
 
-    readAll: async ({ after, limit }) => Result.ok(log.filter((e) => e.globalPosition > after).slice(0, limit)),
+    readAll: async ({ after, limit }) => Result.ok(readAfter(log, after, limit)),
 
     pruneOutbox: async ({ upTo, recordedBefore }) => {
       const before = Date.parse(recordedBefore);

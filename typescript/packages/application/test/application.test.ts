@@ -6,6 +6,7 @@ import {
   Panic,
   Result,
   aggregateRepository,
+  catchUp,
   createApplication,
   defineCommand,
   defineContracts,
@@ -31,6 +32,7 @@ import {
   TicketClosed,
   TicketNotOpen,
   TicketOpened,
+  close,
   closeTicket,
   open,
   openTicket,
@@ -435,6 +437,86 @@ describe("event handlers", () => {
     expect(first.isErr()).toBe(true);
     expect(second.unwrap()[0]?.position).toBe(2);
     expect(seen).toEqual(["t-1", "t-2"]);
+  });
+
+  describe("with concurrency", () => {
+    /** Tickets t-1 and t-2, opened then closed, interleaved in the log: open t-1, open t-2, close t-1, close t-2. */
+    async function interleaved() {
+      const store = inMemoryEventStore();
+      const repository = tickets(store);
+      for (const id of ["t-1", "t-2"]) await repository.execute(id, (s) => open(s, { ticketId: id, title: id }));
+      for (const id of ["t-1", "t-2"]) await repository.execute(id, (s) => close(s, id));
+      return { store, checkpoints: inMemoryCheckpointStore() };
+    }
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
+
+    it("work on several streams at once, each stream's events in order", async () => {
+      const { store, checkpoints } = await interleaved();
+      const seen: string[] = [];
+      let inFlight = 0;
+      let most = 0;
+      const step = async (what: string) => {
+        most = Math.max(most, ++inFlight);
+        await tick();
+        seen.push(what);
+        inFlight--;
+        return Result.ok(undefined);
+      };
+      const handler = defineEventHandler({
+        name: "slow",
+        events: [TicketOpened, TicketClosed],
+        concurrency: 2,
+        handle: { TicketOpened: ({ data }) => step(`open ${data.ticketId}`), TicketClosed: ({ data }) => step(`close ${data.ticketId}`) },
+      });
+
+      const report = (await catchUp(handler, store, checkpoints)).unwrap();
+
+      expect(report).toEqual({ handler: "slow", handled: 4, position: 4 });
+      expect(most).toBe(2);
+      expect(seen.indexOf("open t-1")).toBeLessThan(seen.indexOf("close t-1"));
+      expect(seen.indexOf("open t-2")).toBeLessThan(seen.indexOf("close t-2"));
+    });
+
+    it("keep the checkpoint before the earliest failure, offering what came after it again", async () => {
+      const { store, checkpoints } = await interleaved();
+      let failOnce = true;
+      const seen: string[] = [];
+      const handler = defineEventHandler({
+        name: "flaky",
+        events: [TicketOpened, TicketClosed],
+        concurrency: 2,
+        handle: {
+          TicketOpened: async ({ data }) => {
+            await tick();
+            if (data.ticketId === "t-2" && failOnce) {
+              failOnce = false;
+              return Result.err(new DependencyUnavailable({ dependency: "mailer", message: "down" }));
+            }
+            seen.push(`open ${data.ticketId}`);
+            return Result.ok(undefined);
+          },
+          TicketClosed: ({ data }) => {
+            seen.push(`close ${data.ticketId}`);
+            return Result.ok(undefined);
+          },
+        },
+      });
+
+      const first = await catchUp(handler, store, checkpoints);
+      const checkpoint = (await checkpoints.load("flaky")).unwrap();
+      const second = (await catchUp(handler, store, checkpoints)).unwrap();
+
+      expect(first.isErr()).toBe(true);
+      expect(checkpoint).toBe(1);
+      expect(second.position).toBe(4);
+      expect(seen.sort()).toEqual(["close t-1", "close t-1", "close t-2", "open t-1", "open t-2"]);
+    });
+
+    it("must be a positive whole number", () => {
+      expect(() => defineEventHandler({ name: "none", events: [TicketOpened], concurrency: 0, handle: { TicketOpened: () => Result.ok(undefined) } })).toThrow(
+        /concurrency must be a positive integer/,
+      );
+    });
   });
 
   /** A ticket desk whose `handlers` follow its events, with what reached onDefect and onEventHandlingError. */

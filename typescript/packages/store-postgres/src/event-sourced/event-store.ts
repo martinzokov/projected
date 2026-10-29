@@ -31,7 +31,8 @@ class Conflict extends Error {
  * appear and miss it forever. Appends therefore take a transaction-scoped advisory lock just
  * before inserting events, so global positions become visible strictly in order. The lock is
  * held only for the insert and commit; it bounds append throughput to one transaction at a time
- * per schema, which is thousands per second for short transactions.
+ * per schema: three round trips to the database (lock, insert, commit), so thousands per second
+ * next to the database, and a few hundred where each round trip takes a millisecond.
  */
 export function postgresEventStore(client: PostgresClient, options: PostgresOptions = {}): EventStore {
   const db = inSchema(client, options);
@@ -69,10 +70,12 @@ export function postgresEventStore(client: PostgresClient, options: PostgresOpti
             if (expectedVersion !== "any" && expectedVersion !== actual) throw new Conflict(actual);
             if (events.length === 0) return { version: actual, events: [] };
 
+            const version = actual + events.length;
+            // Before the ordering lock: the row is ours already, and the lock is held through commit,
+            // so every statement taken out from under it is throughput for every writer.
+            await tx.updateTable("streams").set({ version }).where("stream", "=", stream).execute();
             await advisoryLock(tx, "projected-append", schema);
             const inserted = await tx.insertInto("events").values(events.map(eventRow(stream, actual))).returning(COLUMNS).execute();
-            const version = actual + events.length;
-            await tx.updateTable("streams").set({ version }).where("stream", "=", stream).execute();
             const recorded = inserted.map(toRecorded).sort((a, b) => a.streamVersion - b.streamVersion);
             return { version, events: recorded };
           })

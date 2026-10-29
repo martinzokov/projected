@@ -42,6 +42,8 @@ export interface EventHandler {
   handle(recorded: RecordedEvent): Promise<Result<void, InfrastructureError>>;
   /** Forget everything it has built, before a rebuild replays every event to it. */
   reset?(): Promise<Result<void, InfrastructureError>>;
+  /** How many streams it works on at once; 1 when absent. Each stream's events stay in order. */
+  readonly concurrency?: number;
 }
 
 export interface DefineEventHandlerOptions<Events extends readonly AnyEventDefinition[]> {
@@ -54,6 +56,13 @@ export interface DefineEventHandlerOptions<Events extends readonly AnyEventDefin
    * enough for a handler whose every effect is an idempotent upsert or delete.
    */
   readonly reset?: () => MaybePromise<Result<void, InfrastructureError>>;
+  /**
+   * How many streams the handler works on at once. Defaults to 1: one event at a time, in the
+   * log's order. Above 1, each stream's events still arrive in order, one at a time, but those of
+   * different streams overlap — for a handler whose work on one stream never waits on another
+   * stream's events, such as a process that keeps each instance in a stream of its own.
+   */
+  readonly concurrency?: number;
 }
 
 /**
@@ -86,10 +95,14 @@ export function defineEventHandler<const Events extends readonly AnyEventDefinit
     if (typeof functions[type] !== "function") panic(`defineEventHandler("${options.name}"): no handler for ${type}`);
   }
 
+  const concurrency = options.concurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1) panic(`defineEventHandler("${options.name}"): concurrency must be a positive integer, got ${concurrency}`);
+
   const reset = options.reset;
   return {
     name: options.name,
     eventTypes: [...definitions.keys()],
+    concurrency,
     handles: (type) => definitions.has(type),
     ...(reset === undefined ? {} : { reset: async () => reset() }),
     handle: async (recorded) => {
@@ -190,10 +203,61 @@ export function handleTraced(
   );
 }
 
+/** What handling one batch came to: how many events were handled, and the first in log order that failed. */
+interface BatchOutcome {
+  readonly handled: number;
+  readonly failed?: { readonly index: number; readonly error: EventHandlingError };
+}
+
+/** The batch's events in log order, one at a time, stopping at the first failure. */
+async function inOrder(handler: EventHandler, batch: readonly RecordedEvent[], telemetry: Telemetry): Promise<BatchOutcome> {
+  let handled = 0;
+  for (const [index, recorded] of batch.entries()) {
+    if (!handler.handles(recorded.type)) continue;
+    const outcome = await handleTraced(handler, recorded, telemetry);
+    if (outcome.isErr()) return { handled, failed: { index, error: outcome.error } };
+    handled++;
+  }
+  return { handled };
+}
+
 /**
- * Feed a handler every event recorded since its checkpoint, in global order, saving progress
- * after each batch. Stops at the first failure, keeping the checkpoint at the last success, so
- * the failing event is the first one the next catch-up offers.
+ * The batch's events stream by stream, `concurrency` streams at a time: each stream's in order,
+ * stopping at its first failure. The failure reported is the earliest in log order, so that the
+ * checkpoint never passes an event that was not handled.
+ */
+async function byStream(handler: EventHandler, batch: readonly RecordedEvent[], telemetry: Telemetry, concurrency: number): Promise<BatchOutcome> {
+  const streams = new Map<string, number[]>();
+  for (const [index, recorded] of batch.entries()) {
+    if (handler.handles(recorded.type)) streams.set(recorded.stream, [...(streams.get(recorded.stream) ?? []), index]);
+  }
+  const queue = [...streams.values()];
+  let handled = 0;
+  let failed: BatchOutcome["failed"];
+  const work = async () => {
+    for (let indices = queue.shift(); indices !== undefined; indices = queue.shift()) {
+      for (const index of indices) {
+        const recorded = batch[index];
+        if (recorded === undefined) break;
+        const outcome = await handleTraced(handler, recorded, telemetry);
+        if (outcome.isErr()) {
+          if (failed === undefined || index < failed.index) failed = { index, error: outcome.error };
+          break;
+        }
+        handled++;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, work));
+  return failed === undefined ? { handled } : { handled, failed };
+}
+
+/**
+ * Feed a handler every event recorded since its checkpoint, in global order — or stream by
+ * stream, for a handler with `concurrency` — saving progress after each batch. Stops at the
+ * first failure, keeping the checkpoint just before it, so the failing event is the first one
+ * the next catch-up offers. With `concurrency`, later events of other streams may have been
+ * handled already, and are offered again: handlers are idempotent.
  */
 export async function catchUp(
   handler: EventHandler,
@@ -203,23 +267,21 @@ export async function catchUp(
 ): Promise<Result<CatchUpReport, EventHandlingError>> {
   const batchSize = options.batchSize ?? 100;
   const telemetry = options.telemetry ?? noTelemetry;
+  const concurrency = handler.concurrency ?? 1;
   return Result.gen(async function* () {
     const start = yield* Result.await(checkpoints.load(handler.name));
     let position = start;
     let handled = 0;
     for (;;) {
       const batch = yield* Result.await(store.readAll({ after: position, limit: batchSize }));
-      for (const recorded of batch) {
-        if (handler.handles(recorded.type)) {
-          const outcome = await handleTraced(handler, recorded, telemetry);
-          if (outcome.isErr()) {
-            if (position !== start) yield* Result.await(checkpoints.save(handler.name, position));
-            return Result.err(outcome.error);
-          }
-          handled++;
-        }
-        position = recorded.globalPosition;
+      const outcome = concurrency === 1 ? await inOrder(handler, batch, telemetry) : await byStream(handler, batch, telemetry, concurrency);
+      handled += outcome.handled;
+      if (outcome.failed !== undefined) {
+        position = batch[outcome.failed.index - 1]?.globalPosition ?? position;
+        if (position !== start) yield* Result.await(checkpoints.save(handler.name, position));
+        return Result.err(outcome.failed.error);
       }
+      position = batch.at(-1)?.globalPosition ?? position;
       if (batch.length > 0) yield* Result.await(checkpoints.save(handler.name, position));
       if (batch.length < batchSize) return Result.ok({ handler: handler.name, handled, position });
     }

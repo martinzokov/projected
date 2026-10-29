@@ -145,7 +145,9 @@ with a metric exporter to collect them. In tests, `recordingTelemetry()` keeps t
 
 `monitorBacklog(app, { clock })` measures, every 15 s, how long the oldest event each handler
 has yet to process has been waiting — 0 when it is caught up. A lag that keeps growing is a
-handler failing on an event, or one too slow for the rate of events. `app.backlog()` gives the
+handler failing on an event, or one too slow for the rate of events: give a handler whose
+streams are independent `concurrency` (in `defineEventHandler`), so that it works on several
+streams at once, each still in order. `app.backlog()` gives the
 same as data: each handler's checkpoint and its oldest pending event.
 
 A handler stops at the first event it cannot handle and resumes there on the next catch-up; the

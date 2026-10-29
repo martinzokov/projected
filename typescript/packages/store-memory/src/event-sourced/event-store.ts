@@ -13,6 +13,7 @@ import {
 } from "@projected/application/event-sourced";
 import { randomUUID } from "node:crypto";
 import { asJson } from "../json.js";
+import { readAfter } from "../log.js";
 
 export interface InMemoryEventStoreOptions {
   readonly clock?: Clock;
@@ -85,6 +86,6 @@ export function inMemoryEventStore(options: InMemoryEventStoreOptions = {}): InM
       return Result.ok({ version: existing.length + recorded.length, events: recorded });
     },
 
-    readAll: async ({ after, limit }) => Result.ok(log.filter((e) => e.globalPosition > after).slice(0, limit)),
+    readAll: async ({ after, limit }) => Result.ok(readAfter(log, after, limit)),
   };
 }
