@@ -6,6 +6,8 @@ import {
   type EventStore,
   type RecordedEvent,
 } from "@projected/application/event-sourced";
+import type { Selectable } from "kysely";
+import type { EventTable } from "../database.js";
 import { COLUMNS, eventRow, toRecorded } from "../event-rows.js";
 import { advisoryLock, attempt, inSchema, schemaOf, type PostgresClient, type PostgresOptions } from "../sql.js";
 
@@ -37,10 +39,23 @@ export function postgresEventStore(client: PostgresClient, options: PostgresOpti
   const dependency = "postgres event store";
 
   return {
-    readStream: (stream) =>
+    readStream: (stream, readOptions = {}) =>
       attempt(dependency, async () => {
-        const rows = await db.selectFrom("events").select(COLUMNS).where("stream", "=", stream).orderBy("stream_version").execute();
-        return { version: rows[rows.length - 1]?.stream_version ?? 0, events: rows.map(toRecorded) };
+        const after = readOptions.after ?? 0;
+        if (after === 0) {
+          const rows = await db.selectFrom("events").select(COLUMNS).where("stream", "=", stream).orderBy("stream_version").execute();
+          return { version: rows[rows.length - 1]?.stream_version ?? 0, events: rows.map(toRecorded) };
+        }
+        // One statement, so that the version and the events after `after` are of the same moment.
+        const rows = await db
+          .selectFrom("streams")
+          .leftJoin("events", (join) => join.onRef("events.stream", "=", "streams.stream").on("events.stream_version", ">", after))
+          .select(["streams.version as head", ...COLUMNS.map((column) => `events.${column}` as const)])
+          .where("streams.stream", "=", stream)
+          .orderBy("events.stream_version")
+          .execute();
+        const events = rows.flatMap((row) => (row.event_id === null ? [] : [toRecorded(row as Selectable<EventTable>)]));
+        return { version: rows[0]?.head ?? 0, events };
       }),
 
     appendToStream: async (stream, events, { expectedVersion }) => {

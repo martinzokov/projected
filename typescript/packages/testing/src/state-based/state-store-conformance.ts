@@ -185,6 +185,33 @@ export function stateStoreConformance(name: string, create: () => StateStore | P
       expect(seen).toEqual(all);
     }, 30_000);
 
+    it("prunes outbox events up to a position recorded before a time, and never reuses their positions", async () => {
+      const store = await create();
+      await store.save("order-1", { state: state({}), events: [event("A"), event("B"), event("C")] }, { expectedVersion: 0 });
+      const [, second, third] = (await store.readAll({ after: 0, limit: 10 })).unwrap();
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
+
+      const pruned = (await store.pruneOutbox({ upTo: second?.globalPosition ?? 0, recordedBefore: tomorrow })).unwrap();
+      await store.save("order-1", { state: state({}), events: [event("D")] }, { expectedVersion: 1 });
+      const left = (await store.readAll({ after: 0, limit: 10 })).unwrap();
+
+      expect(pruned).toBe(2);
+      expect(left.map((e) => [e.type, e.streamVersion])).toEqual([["C", 3], ["D", 4]]);
+      expect(left[0]?.globalPosition).toBe(third?.globalPosition);
+      expect(left[1]?.globalPosition).toBeGreaterThan(third?.globalPosition ?? Infinity);
+    });
+
+    it("keeps outbox events recorded after the time it is given, whatever their position", async () => {
+      const store = await create();
+      await store.save("order-1", { state: state({}), events: [event("A"), event("B")] }, { expectedVersion: 0 });
+      const [, last] = (await store.readAll({ after: 0, limit: 10 })).unwrap();
+
+      const pruned = (await store.pruneOutbox({ upTo: last?.globalPosition ?? 0, recordedBefore: "2000-01-01T00:00:00.000Z" })).unwrap();
+
+      expect(pruned).toBe(0);
+      expect((await store.readAll({ after: 0, limit: 10 })).unwrap().map((e) => e.type)).toEqual(["A", "B"]);
+    });
+
     it("stores states and events as JSON: a date comes back as its ISO string", async () => {
       const store = await create();
       const at = new Date("2024-03-01T10:00:00.000Z");

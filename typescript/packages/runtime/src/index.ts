@@ -70,3 +70,4 @@ export { shutdownGracefully, type Intake, type Shutdown, type ShutdownOptions } 
 export { prepareSchema, type PrepareSchemaOptions } from "./schema.js";
 export { runMigrations, type MigrationRun } from "./migrate.js";
 export { jsonLogger, logLevel, type JsonLoggerOptions } from "./logger.js";
+export { OUTBOX_RETENTION_MS, pruneOutbox, startOutboxPruning, type OutboxPruner, type OutboxPrunerOptions, type OutboxPruningOptions } from "./outbox.js";

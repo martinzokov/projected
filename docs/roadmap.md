@@ -6,7 +6,8 @@ both, HTTP and messaging adapters, Kafka and NATS JetStream transports, better-a
 authentication, duplicate command protection, OpenTelemetry tracing and metrics, OpenAPI,
 enforcement with configurable design rules, typed clients for third-party APIs, a living service
 catalog, property-based and mutation testing, scaffolding, health, graceful shutdown and operator
-tasks, guardrails and evals for coding agents, black-box conformance suites, and skills. Next
+tasks, snapshots, outbox pruning, structured logs, Hono hosting with CORS, JWT authentication,
+guardrails and evals for coding agents, black-box conformance suites, and skills. Next
 steps, roughly in order of value:
 
 ## Persistence
@@ -14,8 +15,6 @@ steps, roughly in order of value:
 - **More stores**, each passing the conformance suites ([`persistence.md`](persistence.md) has
   notes per store): KurrentDB (events, checkpoints), MongoDB (all ports), Redis (idempotency,
   checkpoints, documents), Convex (documents, events via mutations).
-- **Snapshots** for long-lived event-sourced aggregates, behind the repository (no API change).
-- **Outbox pruning** (state-based): delete outbox rows every handler and relay has passed.
 - **Higher append throughput** on Postgres by tracking in-flight transactions instead of the
   ordering lock, if a single schema ever needs it.
 

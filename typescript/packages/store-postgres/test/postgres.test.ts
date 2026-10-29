@@ -20,6 +20,7 @@ import {
   idempotencyStoreConformance,
   principal,
   sequentialIds,
+  snapshotStoreConformance,
 } from "@projected/testing/event-sourced";
 import { fromPool, postgresMigrator, postgresReadiness, postgresStores, schemaMigrator, type PostgresClient } from "@projected/store-postgres/event-sourced";
 import * as stateBased from "@projected/store-postgres/state-based";
@@ -104,6 +105,7 @@ suite("postgres", () => {
   checkpointStoreConformance("postgres", async () => (await stores()).checkpoints);
   idempotencyStoreConformance("postgres", async () => (await stores()).idempotency);
   documentStoreConformance("postgres", async () => (await stores()).documents);
+  snapshotStoreConformance("postgres", async () => (await stores()).snapshots);
 
   describe("migrations", () => {
     it("list what is pending without changing anything, then nothing once applied", async () => {
@@ -125,7 +127,7 @@ suite("postgres", () => {
 
       const runs = await Promise.all([1, 2, 3].map(() => postgresMigrator(db, { schema }).apply()));
 
-      expect(runs.flatMap((run) => run.unwrap()).sort()).toEqual(["core@1", "event-sourced@1"]);
+      expect(runs.flatMap((run) => run.unwrap()).sort()).toEqual(["core@1", "event-sourced@1", "event-sourced@2"]);
     });
 
     it("keep each flavour's tables on its own track, so one schema can hold both", async () => {
@@ -160,6 +162,17 @@ suite("postgres", () => {
       expect(read.isErr() && read.error.message).toMatch(/run `projected migrate`/);
     });
 
+  });
+
+  it("prunes an outbox larger than one delete batch", async () => {
+    const { stateStore } = await stateBasedStores();
+    const events = Array.from({ length: 5_001 }, (_, index) => ({ type: "Counted", schemaVersion: 1, data: { index } }));
+    const saved = (await stateStore.save("counter-1", { state: { schemaVersion: 1, data: {} }, events }, { expectedVersion: 0 })).unwrap();
+
+    const pruned = await stateStore.pruneOutbox({ upTo: saved.events.at(-1)?.globalPosition ?? 0, recordedBefore: new Date(Date.now() + 60_000).toISOString() });
+
+    expect(pruned.unwrap()).toBe(5_001);
+    expect((await stateStore.readAll({ after: 0, limit: 1 })).unwrap()).toEqual([]);
   });
 
   describe("a whole application", () => {

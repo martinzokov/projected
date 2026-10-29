@@ -2,7 +2,7 @@ import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, r
 import { OPERATE } from "@projected/application/state-based";
 import { httpHandler } from "@projected/http";
 import { openTelemetry } from "@projected/opentelemetry";
-import { jsonLogger, logLevel, monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
+import { jsonLogger, logLevel, monitorBacklog, randomIds, shutdownGracefully, startOutboxPruning, startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { corsOrigins, listen, web } from "./web.js";
 import { composeSchool } from "./school.js";
@@ -47,11 +47,18 @@ const poller = startPolling(school, { onError: (error) => log.warn("event handli
 // Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
 const backlog = monitorBacklog(school, { clock, onError: (error) => log.warn("backlog", { error }) });
 
+// Hourly, delete outbox events every handler and relay has passed once they are 30 days old.
+const pruner = startOutboxPruning(school, infrastructure.stateStore, {
+  clock,
+  onPruned: (count) => log.info("outbox pruned", { count }),
+  onError: (error) => log.warn("outbox pruning", { error }),
+});
+
 // On SIGTERM: report draining, give load balancers SHUTDOWN_GRACE_MS to notice, stop taking
 // requests, finish those in flight, then close connections.
 shutdownGracefully({
   app: school,
-  intake: [server, poller, backlog],
+  intake: [server, poller, backlog, pruner],
   close: infrastructure.close,
   graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
   log: (message) => log.info(message),

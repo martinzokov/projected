@@ -157,6 +157,26 @@ is retried in the background, not only when the next command arrives.
 In the state-based flavour handlers read the outbox, so an event relay's lag is how long events
 wait in the outbox before they reach the broker.
 
+## Outbox growth
+
+In the state-based flavour every save's events stay in the outbox until something deletes them.
+`startOutboxPruning(app, stateStore, { clock })` does, hourly: it deletes the events every one of
+the app's handlers and relays has passed (the lowest checkpoint in `app.backlog()`) once they are
+older than the retention — 30 days unless `retentionMs` says otherwise. The school example and
+generated state-based services run it, as part of the shutdown's intake. Postgres deletes in
+batches of 5 000 rows, so pruning a large backlog never holds a long lock.
+
+Two consequences to know:
+
+- **Every reader must be a handler of the app that prunes.** A process that reads the outbox
+  with handlers the pruning app does not have is not waited for.
+- **A rebuild replays only what is left**: the retention is how far back a rebuilt read model,
+  or a newly added handler, can see. Rebuild a read model that needs all of history from the
+  states instead, or keep a longer retention.
+
+Event-sourced streams are the record and are never pruned; long ones load fast with
+[snapshots](persistence.md#snapshotstore).
+
 ## Operator tasks
 
 Maintenance on a live service runs as an operator task: `POST /operate/{task}`, or from a shell,

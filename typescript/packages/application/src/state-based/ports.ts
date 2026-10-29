@@ -27,6 +27,14 @@ export interface SaveResult {
   readonly events: readonly RecordedEvent[];
 }
 
+/** Which outbox events {@link StateStore.pruneOutbox} deletes: those matching both. */
+export interface OutboxPruning {
+  /** At or before this global position: the furthest every reader of the outbox has got. */
+  readonly upTo: number;
+  /** Recorded before this instant (ISO 8601), so that recent events stay for a replay. */
+  readonly recordedBefore: string;
+}
+
 /**
  * The state store port: one document per aggregate, guarded by optimistic concurrency, and an
  * outbox — the events each save emits, written in the same transaction and readable in global
@@ -40,4 +48,10 @@ export interface StateStore extends EventLog {
     write: StateWrite,
     options: { readonly expectedVersion: ExpectedVersion },
   ): Promise<Result<SaveResult, ConcurrencyConflict | DependencyUnavailable>>;
+  /**
+   * Delete outbox events every reader has passed, once they are old enough: the state is the
+   * record, so the outbox only has to hold events until they are delivered. Returns how many
+   * were deleted. The events left keep their positions, and new ones never reuse a deleted one.
+   */
+  pruneOutbox(pruning: OutboxPruning): Promise<Result<number, DependencyUnavailable>>;
 }

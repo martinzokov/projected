@@ -2,8 +2,9 @@ import { sql } from "kysely";
 import type { Migration } from "../migrate.js";
 
 /**
- * The event store's tables: one row per stream for concurrency, and the events themselves.
- * Constraint names are the ones Postgres gave this migration's original SQL.
+ * The event store's tables: one row per stream for concurrency, and the events themselves; then
+ * the latest snapshot of each stream. Constraint names are the ones Postgres gave this
+ * migration's original SQL.
  */
 export const EVENT_SOURCED_MIGRATIONS: readonly Migration[] = [
   {
@@ -26,6 +27,19 @@ export const EVENT_SOURCED_MIGRATIONS: readonly Migration[] = [
         .addColumn("metadata", "jsonb", (c) => c.notNull().defaultTo(sql`'{}'`))
         .addColumn("recorded_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
         .addUniqueConstraint("events_stream_stream_version_key", ["stream", "stream_version"])
+        .execute();
+    },
+  },
+  {
+    version: 2,
+    up: async (db) => {
+      await db.schema
+        .createTable("snapshots")
+        .addColumn("stream", "text", (c) => c.primaryKey())
+        .addColumn("version", "integer", (c) => c.notNull())
+        .addColumn("schema_version", "integer", (c) => c.notNull())
+        .addColumn("state", "jsonb", (c) => c.notNull())
+        .addColumn("taken_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
         .execute();
     },
   },

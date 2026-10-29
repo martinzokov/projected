@@ -25,7 +25,7 @@ export interface InMemoryStateStoreOptions {
 export interface InMemoryStateStore extends StateStore {
   /** Every event in the outbox, in global order. */
   readonly all: readonly RecordedEvent[];
-  /** The events one aggregate has emitted, in order. */
+  /** The events one aggregate has emitted that are still in the outbox, in order. */
   eventsOf(key: string): readonly RecordedEvent[];
   /** The state stored under `key`; undefined when never saved or removed. */
   stateOf(key: string): SerializedState | undefined;
@@ -34,14 +34,16 @@ export interface InMemoryStateStore extends StateStore {
 interface Row {
   readonly version: number;
   readonly state: SerializedState | undefined;
-  readonly events: readonly RecordedEvent[];
+  /** Events this aggregate has emitted, pruned ones included: its next event's number. */
+  readonly emitted: number;
 }
 
 /** Create an in-memory state store. State lives as long as the returned object. */
 export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InMemoryStateStore {
   const clock = options.clock ?? { now: () => new Date() };
   const ids = options.ids ?? { next: () => randomUUID() };
-  const log: RecordedEvent[] = [];
+  let log: RecordedEvent[] = [];
+  let position = 0;
   const rows = new Map<string, Row>();
 
   const matches = (expected: ExpectedVersion, actual: number) => expected === "any" || expected === actual;
@@ -50,7 +52,7 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
     get all() {
       return [...log];
     },
-    eventsOf: (key) => [...(rows.get(key)?.events ?? [])],
+    eventsOf: (key) => log.filter((event) => event.stream === key),
     stateOf: (key) => asJson(rows.get(key)?.state),
 
     load: async (key): Promise<Result<StoredState, DependencyUnavailable>> => {
@@ -63,7 +65,7 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
       write: StateWrite,
       { expectedVersion }: { readonly expectedVersion: ExpectedVersion },
     ): Promise<Result<SaveResult, ConcurrencyConflict | DependencyUnavailable>> => {
-      const row = rows.get(key) ?? { version: 0, state: undefined, events: [] };
+      const row = rows.get(key) ?? { version: 0, state: undefined, emitted: 0 };
       if (!matches(expectedVersion, row.version)) {
         return Result.err(
           new ConcurrencyConflict({
@@ -79,8 +81,8 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
         (event, index): RecordedEvent => ({
           eventId: event.eventId ?? ids.next(),
           stream: key,
-          streamVersion: row.events.length + index + 1,
-          globalPosition: log.length + index + 1,
+          streamVersion: row.emitted + index + 1,
+          globalPosition: position + index + 1,
           type: event.type,
           schemaVersion: event.schemaVersion,
           // Stored as JSON, as a real store would, so nothing shares references with the caller.
@@ -93,12 +95,21 @@ export function inMemoryStateStore(options: InMemoryStateStoreOptions = {}): InM
       rows.set(key, {
         version,
         state: write.state === null ? undefined : asJson(write.state),
-        events: [...row.events, ...recorded],
+        emitted: row.emitted + recorded.length,
       });
       log.push(...recorded);
+      position += recorded.length;
       return Result.ok({ version, events: recorded });
     },
 
     readAll: async ({ after, limit }) => Result.ok(log.filter((e) => e.globalPosition > after).slice(0, limit)),
+
+    pruneOutbox: async ({ upTo, recordedBefore }) => {
+      const before = Date.parse(recordedBefore);
+      const kept = log.filter((event) => event.globalPosition > upTo || Date.parse(event.recordedAt) >= before);
+      const pruned = log.length - kept.length;
+      log = kept;
+      return Result.ok(pruned);
+    },
   };
 }

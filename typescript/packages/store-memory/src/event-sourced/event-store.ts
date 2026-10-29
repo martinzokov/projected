@@ -43,9 +43,10 @@ export function inMemoryEventStore(options: InMemoryEventStoreOptions = {}): InM
     },
     stream: (name) => [...(streams.get(name) ?? [])],
 
-    readStream: async (stream): Promise<Result<StreamSlice, DependencyUnavailable>> => {
+    readStream: async (stream, options = {}): Promise<Result<StreamSlice, DependencyUnavailable>> => {
       const events = streams.get(stream) ?? [];
-      return Result.ok({ version: events.length, events: [...events] });
+      const after = options.after ?? 0;
+      return Result.ok({ version: events.length, events: events.filter((event) => event.streamVersion > after) });
     },
 
     appendToStream: async (

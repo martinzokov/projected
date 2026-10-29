@@ -402,7 +402,7 @@ export function listen(app: Hono, port: number): Promise<{ readonly url: string;
 import { betterAuthAuthenticator, betterAuthRoutes, betterAuthSecuritySchemes, rolesOf } from "@projected/auth-better-auth";
 import { httpHandler } from "@projected/http";
 import { openTelemetry } from "@projected/opentelemetry";
-import { jsonLogger, logLevel, monitorBacklog, randomIds, shutdownGracefully, startPolling, systemClock } from "@projected/runtime";
+import { jsonLogger, logLevel, monitorBacklog, randomIds, shutdownGracefully, ${flavour === "state-based" ? "startOutboxPruning, " : ""}startPolling, systemClock } from "@projected/runtime";
 import { environment } from "./environment.js";
 import { compose${Name} } from "./${name}.js";
 import { corsOrigins, listen, web } from "./web.js";
@@ -444,12 +444,23 @@ const poller = startPolling(app, { onError: (error) => log.warn("event handling"
 
 // Event handler lag, as the projected.event_handler.lag gauge: alert when it keeps growing.
 const backlog = monitorBacklog(app, { clock, onError: (error) => log.warn("backlog", { error }) });
-
+${
+  flavour === "state-based"
+    ? `
+// Hourly, delete outbox events every handler and relay has passed once they are 30 days old.
+const pruner = startOutboxPruning(app, infrastructure.stateStore, {
+  clock,
+  onPruned: (count) => log.info("outbox pruned", { count }),
+  onError: (error) => log.warn("outbox pruning", { error }),
+});
+`
+    : ""
+}
 // On SIGTERM: report draining, give load balancers SHUTDOWN_GRACE_MS to notice, stop taking
 // requests, finish those in flight, then close connections.
 shutdownGracefully({
   app,
-  intake: [server, poller, backlog],
+  intake: [server, poller, backlog${flavour === "state-based" ? ", pruner" : ""}],
   close: infrastructure.close,
   graceMs: Number(process.env.SHUTDOWN_GRACE_MS ?? 0),
   log: (message) => log.info(message),

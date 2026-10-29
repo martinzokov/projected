@@ -41,6 +41,7 @@ export interface EventTable {
 export interface EventSourcedTables {
   streams: { stream: string; version: number };
   events: EventTable;
+  snapshots: { stream: string; version: number; schema_version: number; state: Json<unknown>; taken_at: Generated<Date> };
 }
 
 export interface StateBasedTables {

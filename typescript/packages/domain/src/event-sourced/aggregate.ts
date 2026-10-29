@@ -8,6 +8,7 @@ import {
   type EventOfDefinition,
   type SerializedEvent,
 } from "../event.js";
+import { assertJsonCompatible } from "../json.js";
 import { CAMEL_CASE } from "../naming.js";
 
 type DataFor<D, Type extends string> = D extends EventDefinition<Type, infer S> ? z.output<S> : never;
@@ -40,8 +41,25 @@ export interface AggregateDefinition<
   fold(events: Iterable<EventOfDefinition<Events[number]>>, from?: S): S;
   /** The event stream holding the aggregate with this id. */
   streamName(id: string): string;
+  /** How its state is snapshotted, when it opts in. */
+  readonly snapshot: SnapshotPolicy<S> | undefined;
   encode(event: EventOfDefinition<Events[number]>): SerializedEvent;
   decode(serialized: SerializedEvent): Result<EventOfDefinition<Events[number]>, EventDecodingFailed>;
+}
+
+/**
+ * Snapshots for an aggregate whose streams grow long — an account with years of entries: its
+ * state is stored every `every` events, and a load reads the latest snapshot and only the events
+ * after it. Snapshots are disposable: one that does not match `schema`, or was taken at another
+ * `version`, is ignored and the state folded from the events instead.
+ */
+export interface SnapshotPolicy<S> {
+  /** Schema of the state as stored. JSON-compatible. */
+  readonly schema: z.ZodType<S>;
+  /** Bump it whenever `evolve` or the state's shape changes, so that older snapshots are ignored. */
+  readonly version: number;
+  /** Take a snapshot each time the stream passes another multiple of this many events. */
+  readonly every: number;
 }
 
 /** Any aggregate definition. */
@@ -79,6 +97,8 @@ export interface DefineAggregateOptions<
   readonly initialState: () => S;
   readonly events: Events;
   readonly evolve: NoExtraKeys<Handlers, Events[number]["type"]>;
+  /** Opt in to snapshots for long streams: `{ schema: AccountState, version: 1, every: 100 }`. */
+  readonly snapshot?: SnapshotPolicy<NoInfer<S>>;
 }
 
 /**
@@ -126,6 +146,14 @@ export function defineAggregate<
   for (const type of Object.keys(handlers)) {
     if (!byType.has(type)) panic(`defineAggregate("${options.name}"): evolve handler for unlisted event ${type}`);
   }
+  const snapshot = options.snapshot;
+  if (snapshot !== undefined) {
+    const label = `defineAggregate("${options.name}")`;
+    if (!Number.isInteger(snapshot.every) || snapshot.every < 1) panic(`${label}: snapshot.every must be a positive integer, got ${snapshot.every}`);
+    if (!Number.isInteger(snapshot.version) || snapshot.version < 1) panic(`${label}: snapshot.version must be a positive integer, got ${snapshot.version}`);
+    assertJsonCompatible(label, "snapshot", snapshot.schema, "output");
+    assertJsonCompatible(label, "snapshot", snapshot.schema, "input");
+  }
 
   type Event = EventOfDefinition<Events[number]>;
   const evolve = (state: S, event: Event): S => {
@@ -147,6 +175,7 @@ export function defineAggregate<
       return state;
     },
     streamName: (id) => `${options.name}-${id}`,
+    snapshot,
     encode: (event) => {
       const { type, data } = event as DomainEvent;
       const definition = byType.get(type);

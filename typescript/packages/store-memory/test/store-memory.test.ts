@@ -6,12 +6,14 @@ import {
   fixedClock,
   idempotencyStoreConformance,
   sequentialIds,
+  snapshotStoreConformance,
 } from "@projected/testing/event-sourced";
 import {
   inMemoryCheckpointStore,
   inMemoryDocumentStore,
   inMemoryEventStore,
   inMemoryIdempotencyStore,
+  inMemorySnapshotStore,
 } from "@projected/store-memory/event-sourced";
 import { inMemoryStateStore } from "@projected/store-memory/state-based";
 import { stateStoreConformance } from "@projected/testing/state-based";
@@ -21,6 +23,7 @@ stateStoreConformance("in-memory", () => inMemoryStateStore());
 checkpointStoreConformance("in-memory", () => inMemoryCheckpointStore());
 idempotencyStoreConformance("in-memory", () => inMemoryIdempotencyStore());
 documentStoreConformance("in-memory", () => inMemoryDocumentStore());
+snapshotStoreConformance("in-memory", () => inMemorySnapshotStore());
 
 describe("inMemoryEventStore", () => {
   it("stamps events with the injected clock and ids", async () => {

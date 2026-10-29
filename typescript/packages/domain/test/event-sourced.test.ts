@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { Result, defineAggregate, type Decision, type EventOf } from "@projected/domain/event-sourced";
+import { Result, defineAggregate, z, type Decision, type EventOf } from "@projected/domain/event-sourced";
 import { AccountClosed, AccountOverdrawn, MoneyDeposited, MoneyWithdrawn } from "./fixtures.js";
 
 type AccountState = { readonly balance: number; readonly open: boolean };
@@ -58,6 +58,15 @@ describe("defineAggregate", () => {
     expect(() =>
       defineAggregate({ name: "bank-account", initialState: () => 0, events: [], evolve: {} }),
     ).toThrow(/camelCase/);
+  });
+
+  it("rejects a snapshot policy it could not keep", () => {
+    const withSnapshot = (snapshot: { schema: z.ZodType<number>; version: number; every: number }) => () =>
+      defineAggregate({ name: "counter", initialState: () => 0, events: [], evolve: {}, snapshot });
+
+    expect(withSnapshot({ schema: z.number(), version: 1, every: 0 })).toThrow(/snapshot.every must be a positive integer/);
+    expect(withSnapshot({ schema: z.number(), version: 1.5, every: 100 })).toThrow(/snapshot.version must be a positive integer/);
+    expect(withSnapshot({ schema: z.date().transform((date) => date.getTime()), version: 1, every: 100 })).toThrow(/snapshot/);
   });
 });
 

@@ -7,7 +7,7 @@
  */
 export * from "../index.js";
 export * from "@projected/domain/state-based";
-export type { SaveResult, StateStore, StateWrite, StoredState } from "./ports.js";
+export type { OutboxPruning, SaveResult, StateStore, StateWrite, StoredState } from "./ports.js";
 export {
   aggregateRepository,
   type AggregateRepository,

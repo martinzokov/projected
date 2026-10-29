@@ -56,6 +56,19 @@ export function eventStoreConformance(name: string, create: () => EventStore | P
       expect(events.every((e) => !Number.isNaN(Date.parse(e.recordedAt)))).toBe(true);
     });
 
+    it("reads only the events after a version, with the stream's version all the same", async () => {
+      const store = await create();
+      await store.appendToStream("order-1", [event("A"), event("B"), event("C")], { expectedVersion: 0 });
+
+      const tail = (await store.readStream("order-1", { after: 2 })).unwrap();
+      const none = (await store.readStream("order-1", { after: 3 })).unwrap();
+      const missing = (await store.readStream("order-2", { after: 1 })).unwrap();
+
+      expect([tail.version, tail.events.map((e) => [e.type, e.streamVersion])]).toEqual([3, [["C", 3]]]);
+      expect(none).toEqual({ version: 3, events: [] });
+      expect(missing).toEqual({ version: 0, events: [] });
+    });
+
     it("keeps an event id supplied by the caller", async () => {
       const store = await create();
 

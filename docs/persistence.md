@@ -1,6 +1,6 @@
 # Persistence
 
-A projected service stores four kinds of data. Each is a port in `@projected/application`, each
+A projected service stores four kinds of data, and snapshots when event-sourced. Each is a port in `@projected/application`, each
 has an in-memory and a PostgreSQL adapter, and each has a conformance suite in
 `@projected/testing` that any new adapter must pass. Aggregates are stored by the project's
 flavour: an `EventStore` when event-sourced, a `StateStore` (with an outbox) when state-based;
@@ -10,6 +10,7 @@ both come from the flavour's entry points (`@projected/<package>/event-sourced` 
 | Port | Holds | Conformance suite | Memory | PostgreSQL |
 |---|---|---|---|---|
 | `EventStore` (event-sourced) | events: per-aggregate streams plus a global log | `eventStoreConformance` | `inMemoryEventStore` | `postgresEventStore` |
+| `SnapshotStore` (event-sourced) | the latest snapshot of each long stream, for aggregates that opt in | `snapshotStoreConformance` | `inMemorySnapshotStore` | `postgresSnapshotStore` |
 | `StateStore` (state-based) | each aggregate's current state, plus an outbox of the events its saves emit | `stateStoreConformance` | `inMemoryStateStore` | `postgresStateStore` |
 | `CheckpointStore` | how far each event handler has read | `checkpointStoreConformance` | `inMemoryCheckpointStore` | `postgresCheckpointStore` |
 | `IdempotencyStore` | outcomes of commands sent with an idempotency key | `idempotencyStoreConformance` | `inMemoryIdempotencyStore` | `postgresIdempotencyStore` |
@@ -26,7 +27,7 @@ import { prepareSchema } from "@projected/runtime";
 const db = fromPool(new pg.Pool({ connectionString: process.env.DATABASE_URL }));
 const schema = await prepareSchema([postgresMigrator(db)]); // or `projected migrate` before the rollout
 if (schema.isErr()) throw schema.error;
-const { eventStore, checkpoints, idempotency, documents } = postgresStores(db); // stateStore when state-based
+const { eventStore, snapshots, checkpoints, idempotency, documents } = postgresStores(db); // stateStore when state-based
 ```
 
 When the tables are created and upgraded — at start, or as a deploy step with `projected
@@ -41,7 +42,8 @@ though: they are written in one transaction.
 ### EventStore
 
 - Streams named `<category>-<id>`; `readStream` returns events in order and the stream version
-  (number of events, 0 when absent).
+  (number of events, 0 when absent). `readStream(stream, { after })` returns only the events
+  after that version, with the stream's version all the same, read at one moment.
 - `appendToStream(stream, events, { expectedVersion })` succeeds only if the stream is at
   `expectedVersion` (or it is `"any"`), atomically for all events. Of concurrent appends at the
   same version exactly one wins; the others get `ConcurrencyConflict`.
@@ -49,6 +51,23 @@ though: they are written in one transaction.
   reader that has seen position N must never later find an event below N**. This is the hard
   one: it is what lets event handlers keep a single-number checkpoint.
 - Stored data is never mutated, and never shares references with the caller.
+
+### SnapshotStore
+
+- `load(stream)` returns the latest snapshot of the stream — its version, the snapshot policy's
+  version, the state as JSON — or nothing.
+- `save(stream, snapshot)` keeps whichever of the stored and the new snapshot is later, so a
+  slow writer never puts an older one back.
+
+Snapshots are disposable. An aggregate opts in with `snapshot: { schema, version, every }` in
+`defineAggregate`, and the repository is given the store (`aggregateRepository(Account,
+eventStore, { snapshots })`). A load reads the latest snapshot and the events after it; a
+decision that takes the stream past another multiple of `every` saves the state it reached.
+Whatever is wrong with a snapshot — the store is down, it was taken under another `version`, it
+fails `schema`, it is ahead of its stream — means a fold from the first event, and a count in
+`projected.snapshot.failures` when the store failed. Bump `version` whenever `evolve` or the
+state changes; old snapshots are then ignored and replaced as streams grow. Delete the rows of a
+`snapshots` table freely: nothing is lost.
 
 ### StateStore
 
@@ -72,7 +91,16 @@ though: they are written in one transaction.
 The outbox is what makes events trustworthy without event sourcing: an event exists if and only
 if the state change it announces was committed. Relays (`eventRelay`) and projections read it
 with checkpoints, so nothing is published for a change that rolled back, and nothing is lost when
-a broker is down. Outbox rows are kept; pruning those every handler is past is an operational task.
+a broker is down.
+
+- `pruneOutbox({ upTo, recordedBefore })` deletes the outbox events at or before position
+  `upTo` that were recorded before `recordedBefore`, and says how many. The events left keep
+  their positions; new ones never reuse a deleted position, and aggregates keep numbering their
+  events where they were.
+
+The state is the record and the outbox only a delivery queue, so a service deletes what every
+handler and relay has passed once it is old enough: `startOutboxPruning` in
+[operations](operations.md#outbox-growth).
 
 ### CheckpointStore
 

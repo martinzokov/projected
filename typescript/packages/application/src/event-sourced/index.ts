@@ -7,7 +7,7 @@
  */
 export * from "../index.js";
 export * from "@projected/domain/event-sourced";
-export type { AppendResult, EventStore, StreamSlice } from "./ports.js";
+export type { AppendResult, EventStore, ReadStreamOptions, Snapshot, SnapshotStore, StreamSlice } from "./ports.js";
 export {
   aggregateRepository,
   type AggregateRepository,

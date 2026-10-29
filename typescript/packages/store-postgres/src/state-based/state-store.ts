@@ -11,6 +11,9 @@ import { sql } from "kysely";
 import { COLUMNS, eventRow, toRecorded } from "../event-rows.js";
 import { advisoryLock, attempt, inSchema, schemaOf, type PostgresClient, type PostgresOptions } from "../sql.js";
 
+/** Rows deleted per statement when pruning, so that no statement holds locks for long. */
+const PRUNE_BATCH = 5_000;
+
 /** Raised inside the save transaction to roll it back; never escapes this module. */
 class Conflict extends Error {
   readonly actual: number;
@@ -103,6 +106,28 @@ export function postgresStateStore(client: PostgresClient, options: PostgresOpti
       attempt(dependency, async () => {
         const rows = await db.selectFrom("outbox").select(COLUMNS).where("global_position", ">", String(after)).orderBy("global_position").limit(limit).execute();
         return rows.map(toRecorded);
+      }),
+
+    pruneOutbox: ({ upTo, recordedBefore }) =>
+      attempt(dependency, async () => {
+        let pruned = 0;
+        for (;;) {
+          const deleted = await db
+            .deleteFrom("outbox")
+            .where("global_position", "in", (eb) =>
+              eb
+                .selectFrom("outbox")
+                .select("global_position")
+                .where("global_position", "<=", String(upTo))
+                .where("recorded_at", "<", new Date(recordedBefore))
+                .orderBy("global_position")
+                .limit(PRUNE_BATCH),
+            )
+            .executeTakeFirst();
+          const count = Number(deleted.numDeletedRows);
+          pruned += count;
+          if (count < PRUNE_BATCH) return pruned;
+        }
       }),
   };
 }

@@ -28,6 +28,33 @@ export const Student = defineAggregate({
 - `evolve` must handle every listed event — a missing handler is a compile error.
 - `evolve` never rejects anything: the event already happened. Decisions reject; evolve applies.
 
+### Long streams: snapshots
+
+An aggregate whose streams grow into the thousands of events (an account with years of entries)
+opts into snapshots; nothing else changes. The repository stores its state every `every` events
+and loads from the latest snapshot plus the events after it:
+
+```ts
+const AccountState = z.object({ status: z.enum(["none", "open", "closed"]), balance: z.number().int() });
+
+export const Account = defineAggregate({
+  name: "account",
+  initialState: (): z.infer<typeof AccountState> => ({ status: "none", balance: 0 }),
+  events: [AccountOpened, MoneyDeposited],
+  evolve: {
+    AccountOpened: (state) => ({ ...state, status: "open" }),
+    MoneyDeposited: (state, { amount }) => ({ ...state, balance: state.balance + amount }),
+  },
+  snapshot: { schema: AccountState, version: 1, every: 100 },   // JSON schemas only
+});
+```
+
+- **Bump `version` whenever `evolve` or the state changes.** Snapshots under another version are
+  ignored, so the state is folded from the events again; a stale snapshot never leaks through.
+- Snapshots are a cache: one that is missing, unreadable or invalid only costs a full fold.
+  Don't add them to short-lived aggregates — a student with a dozen events gains nothing.
+- The composition root passes the store: `aggregateRepository(Account, eventStore, { snapshots })`.
+
 ## Decisions: state + request → events, or a broken rule
 
 ```ts
@@ -51,5 +78,6 @@ export function reportLastnameChange(
 ## Checklist
 
 - [ ] Every event in `events` has an `evolve` handler; `evolve` never rejects
+- [ ] A snapshot policy only for aggregates with long streams, its `version` bumped with `evolve`
 - [ ] `initialState` has an annotated return type
 - [ ] Decisions return `Result.ok([events])`, `Result.ok([])` or `Result.err(error)`

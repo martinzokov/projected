@@ -2,7 +2,7 @@ import { Result, panic, type AnyAggregate, type Decision, type EventOf, type Sta
 import { eventMetadataFrom } from "../event-metadata.js";
 import { ConcurrencyConflict, type DependencyUnavailable } from "../errors.js";
 import type { ExecutionContext, NewEvent, RecordedEvent } from "../ports.js";
-import type { EventStore } from "./ports.js";
+import type { EventStore, SnapshotStore } from "./ports.js";
 import { retryOnConflict } from "../retry.js";
 import { noTelemetry, type Telemetry } from "../telemetry.js";
 
@@ -40,6 +40,11 @@ export interface AggregateRepositoryOptions {
   readonly maxAttempts?: number;
   /** Records a span per load and per decision. Defaults to none. */
   readonly telemetry?: Telemetry;
+  /**
+   * Where snapshots are kept, for an aggregate that opts in (`snapshot` in `defineAggregate`).
+   * Without it, every load folds the whole stream.
+   */
+  readonly snapshots?: SnapshotStore;
 }
 
 /** An {@link AggregateRepository} over any {@link EventStore}. */
@@ -62,14 +67,47 @@ export function aggregateRepository<A extends AnyAggregate>(
         }),
     );
 
+  const policy = aggregate.snapshot;
+  const snapshots = policy === undefined ? undefined : options.snapshots;
+  const snapshotFailed = (step: "load" | "save") => telemetry.count("projected.snapshot.failures", 1, { "projected.aggregate": aggregate.name, "projected.step": step });
+
+  /** The latest snapshot this version of the aggregate can use. Anything less is no snapshot: snapshots are disposable. */
+  const snapshotOf = async (stream: string): Promise<{ readonly version: number; readonly state: StateOf<A> } | undefined> => {
+    if (policy === undefined || snapshots === undefined) return undefined;
+    const loaded = await snapshots.load(stream);
+    if (loaded.isErr()) {
+      snapshotFailed("load");
+      return undefined;
+    }
+    const snapshot = loaded.value;
+    if (snapshot === undefined || snapshot.schemaVersion !== policy.version) return undefined;
+    const parsed = policy.schema.safeParse(snapshot.state);
+    return parsed.success ? { version: snapshot.version, state: parsed.data as StateOf<A> } : undefined;
+  };
+
   const load = (id: string): Promise<Result<LoadedAggregate<A>, DependencyUnavailable>> =>
     telemetry.span(`load ${aggregate.name}`, { attributes: { "projected.stream": aggregate.streamName(id) } }, async (span) => {
-      const slice = await store.readStream(aggregate.streamName(id));
+      const stream = aggregate.streamName(id);
+      const from = await snapshotOf(stream);
+      let slice = await store.readStream(stream, from === undefined ? undefined : { after: from.version });
+      // A snapshot ahead of its stream belongs to a store that was reset: fold from the start.
+      const usable = from !== undefined && slice.isOk() && slice.value.version >= from.version ? from : undefined;
+      if (from !== undefined && usable === undefined) slice = await store.readStream(stream);
       return slice.map(({ version, events }) => {
-        span.setAttributes({ "projected.stream.version": version });
-        return { id, version, state: aggregate.fold(decodeAll(events)) };
+        span.setAttributes({ "projected.stream.version": version, ...(usable === undefined ? {} : { "projected.snapshot.version": usable.version }) });
+        return { id, version, state: aggregate.fold(decodeAll(events), usable?.state) };
       });
     });
+
+  /** After an append that passed another multiple of `every`, store the state reached. */
+  const snapshotAfter = async (stream: string, before: number, after: number, state: StateOf<A>) => {
+    if (policy === undefined || snapshots === undefined) return;
+    if (Math.floor(after / policy.every) === Math.floor(before / policy.every)) return;
+    const encoded = policy.schema.safeParse(state);
+    if (!encoded.success) return snapshotFailed("save");
+    const saved = await snapshots.save(stream, { version: after, schemaVersion: policy.version, state: encoded.data });
+    if (saved.isErr()) snapshotFailed("save");
+  };
 
   const attempt = async <E>(
     id: string,
@@ -89,7 +127,9 @@ export function aggregateRepository<A extends AnyAggregate>(
       const appended = yield* Result.await(
         store.appendToStream(aggregate.streamName(id), newEvents, { expectedVersion: loaded.version }),
       );
-      return Result.ok({ id, events, version: appended.version, state: aggregate.fold(events, loaded.state) });
+      const state = aggregate.fold(events, loaded.state);
+      await snapshotAfter(aggregate.streamName(id), loaded.version, appended.version, state);
+      return Result.ok({ id, events, version: appended.version, state });
     });
 
   return {

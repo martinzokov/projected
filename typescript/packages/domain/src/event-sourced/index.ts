@@ -14,5 +14,6 @@ export {
   type DefineAggregateOptions,
   type EventOf,
   type EvolveHandlers,
+  type SnapshotPolicy,
   type StateOf,
 } from "./aggregate.js";
