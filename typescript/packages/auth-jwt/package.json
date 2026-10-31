@@ -1,6 +1,6 @@
 {
   "name": "@projected/auth-jwt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "JWT and OpenID Connect for projected: an Authenticator that verifies bearer tokens against an issuer's keys (Auth0, Clerk, Cognito, Keycloak, WorkOS, Entra ID) and turns their claims into principals.",
   "license": "MIT",
   "repository": {

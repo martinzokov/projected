@@ -1,6 +1,6 @@
 {
   "name": "@projected/messaging",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Asynchronous messaging adapters for projected: queued commands, an event relay (the event store is the outbox) and consumers, over a pluggable transport.",
   "license": "MIT",
   "repository": {

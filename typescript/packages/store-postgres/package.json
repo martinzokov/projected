@@ -1,6 +1,6 @@
 {
   "name": "@projected/store-postgres",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PostgreSQL adapters for projected's storage ports: event store or state store with outbox, checkpoints, idempotency and documents.",
   "license": "MIT",
   "repository": {

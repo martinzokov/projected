@@ -1,6 +1,6 @@
 {
   "name": "@projected/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The projected command line: architecture checks, OpenAPI generation and contract immutability locks.",
   "license": "MIT",
   "repository": {

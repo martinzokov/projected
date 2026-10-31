@@ -1,6 +1,6 @@
 {
   "name": "@projected/kafka",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Apache Kafka transport for projected's messaging: queued commands, consumers and the event relay over Kafka topics.",
   "license": "MIT",
   "repository": {

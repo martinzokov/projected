@@ -1,6 +1,6 @@
 {
   "name": "@projected/auth-better-auth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "better-auth integration for projected: an Authenticator that turns better-auth sessions into principals, its sign-in routes, and OpenAPI security schemes.",
   "license": "MIT",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "@projected/nats",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "NATS JetStream transport for projected's messaging: a lightweight, single-binary alternative to Kafka with native acknowledgements and redelivery.",
   "license": "MIT",
   "repository": {

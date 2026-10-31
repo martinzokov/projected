@@ -1,6 +1,6 @@
 {
   "name": "@projected/http",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HTTP adapters for projected: business-operation endpoints and OpenAPI derived from contracts, typed clients, and a Result-based HTTP client.",
   "license": "MIT",
   "repository": {

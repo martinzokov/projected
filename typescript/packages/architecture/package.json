@@ -1,6 +1,6 @@
 {
   "name": "@projected/architecture",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Architecture enforcement for projected apps: per-layer TypeScript presets, dependency-cruiser and ESLint rules for hexagonal boundaries and domain purity.",
   "license": "MIT",
   "repository": {

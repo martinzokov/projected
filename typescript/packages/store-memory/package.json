@@ -1,6 +1,6 @@
 {
   "name": "@projected/store-memory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "In-memory adapters for every projected storage port: events, checkpoints, idempotency, documents. For tests, local development and demos.",
   "license": "MIT",
   "repository": {

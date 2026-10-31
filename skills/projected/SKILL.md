@@ -12,6 +12,8 @@ write. If you find yourself writing a route, a controller, a JSON parser, a SQL 
 loop, an auth check on a token or a tracing span for a feature, stop — you are in the wrong layer
 or reinventing the framework.
 
+**No project yet?** Use the `projected-start` skill to create one, then come back here.
+
 **Check the project's flavour first** — `"flavour"` in `projected.json`, fixed for the life of
 the project:
 

@@ -1,6 +1,6 @@
 {
   "name": "@projected/domain",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pure domain kernel for projected: Result, schemas, events, aggregates and business errors. Zero I/O.",
   "license": "MIT",
   "repository": {

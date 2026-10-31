@@ -1,6 +1,6 @@
 {
   "name": "@projected/application",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Application layer for projected: CQRS contracts, handlers, ports and the transport-neutral dispatcher. Zero I/O.",
   "license": "MIT",
   "repository": {

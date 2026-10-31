@@ -1,6 +1,6 @@
 {
   "name": "@projected/runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Default infrastructure for projected's framework ports: system clock, UUIDs and background event-handler polling.",
   "license": "MIT",
   "repository": {
