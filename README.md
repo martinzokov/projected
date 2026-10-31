@@ -1,21 +1,26 @@
 # projected
 
-**CQRS services — event-sourced or state-based — where you write only the business logic.**
+<p align="center"><img src="docs/assets/hero.png" alt="projected: your business logic at the core, everything else derived and enforced" width="100%"></p>
 
-Developers and AI coding agents write events, decisions, commands, queries and handlers.
-projected derives everything around them: HTTP endpoints shaped as business operations, input
-validation, OpenAPI 3.1, typed clients, message consumers, PostgreSQL persistence with optimistic
-concurrency, projections, access control, duplicate command protection and distributed tracing.
-The hexagonal architecture is enforced by the compiler and by checks that fail the build, so
-agent-written code cannot quietly erode it.
+**The starter for agentic development that doesn't rot.**
+
+You and your coding agents write the business logic: rules, operations and the data they work
+on. projected supplies everything else: HTTP endpoints, validation, OpenAPI 3.1, typed clients,
+PostgreSQL persistence with optimistic locking, Kafka/NATS messaging, access control,
+duplicate-request protection and tracing.
+
+Good design is the path of least resistance. The services follow hexagonal architecture, and
+the compiler and `projected check` fail the build when code crosses a boundary, so code written
+fast by agents can't quietly erode the design. Agents get shipped skills, generators and guard
+hooks for Claude Code, Codex and Cursor.
 
 > **Two flavours, one framework.** Each project picks one in `projected.json` when it is created,
 > and never changes it:
 >
 > | `"flavour"` | Aggregates are | A decision returns |
 > |---|---|---|
-> | `"event-sourced"` | folded from their events | the events that follow |
-> | `"state-based"` | stored as their current state, with an outbox for events | the next state, optionally with events |
+> | `"state-based"` (the usual choice) | stored as their current state, with an outbox for events | the next state, optionally with events |
+> | `"event-sourced"` (when you need full history) | folded from their events | the events that follow |
 >
 > Contracts, the HTTP and messaging protocol, transports, auth, idempotency, tracing and
 > enforcement are identical: a caller cannot tell which flavour served it. The code below is
