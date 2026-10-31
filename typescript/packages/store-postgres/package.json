@@ -1,8 +1,15 @@
 {
   "name": "@projected/store-postgres",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PostgreSQL adapters for projected's storage ports: event store or state store with outbox, checkpoints, idempotency and documents.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/store-postgres"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -36,5 +43,8 @@
     "@projected/testing": "workspace:*",
     "@types/pg": "^8.23.1",
     "pg": "^8.23.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,8 +1,15 @@
 {
   "name": "@projected/nats",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "NATS JetStream transport for projected's messaging: a lightweight, single-binary alternative to Kafka with native acknowledgements and redelivery.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/nats"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,7 +18,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@nats-io/jetstream": "^3.4.0",
     "@nats-io/transport-node": "^3.4.0",
@@ -20,5 +30,8 @@
   },
   "devDependencies": {
     "@projected/testing": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,8 +1,15 @@
 {
   "name": "@projected/domain",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pure domain kernel for projected: Result, schemas, events, aggregates and business errors. Zero I/O.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/domain"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -26,5 +33,8 @@
   "dependencies": {
     "better-result": "^3.0.1",
     "zod": "^4.6.7"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -32,6 +32,7 @@ import {
   eventsModule,
   httpTest,
   phrase,
+  PNPM_WORKSPACE,
   portModule,
   queryUseCase,
   serviceFiles,
@@ -520,6 +521,14 @@ function frameworkRange(target: string): string {
   return `^${own.version}`;
 }
 
+/** Whether `target` is inside a pnpm workspace, whose root then holds the settings pnpm reads. */
+function insidePnpmWorkspace(target: string): boolean {
+  for (let dir = dirname(target); dir !== dirname(dir); dir = dirname(dir)) {
+    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return true;
+  }
+  return false;
+}
+
 /** `projected new service <directory> --flavour <flavour> --aggregate <name>`. */
 export function newService(cwd: string, directory: string | undefined, options: { flavour?: string | undefined; aggregate?: string | undefined }): CommandResult {
   const refuse = (message: string): CommandResult => ({ ok: false, lines: [`new: ${message} — nothing was written`] });
@@ -543,6 +552,7 @@ export function newService(cwd: string, directory: string | undefined, options: 
   const files = {
     ...serviceFiles({ name, flavour, framework: frameworkRange(target) }),
     ...aggregateFiles({ flavour, name: options.aggregate }, kebab(options.aggregate)),
+    ...(insidePnpmWorkspace(target) ? {} : { "pnpm-workspace.yaml": PNPM_WORKSPACE }),
   };
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(dirname(join(target, file)), { recursive: true });

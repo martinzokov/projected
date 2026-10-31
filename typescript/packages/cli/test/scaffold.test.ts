@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,6 +71,19 @@ describe("a new service", () => {
     240_000,
   );
 
+  it("is a pnpm workspace of its own, allowing esbuild's install script, unless it is inside one", () => {
+    const outside = mkdtempSync(join(tmpdir(), "projected-new-"));
+    try {
+      newService(outside, "billing", { flavour: "state-based", aggregate: "invoice" });
+      const inside = service("state-based");
+
+      expect(read(join(outside, "billing"), "pnpm-workspace.yaml")).toMatch(/^allowBuilds:\n {2}esbuild: true$/m);
+      expect(existsSync(join(inside, "pnpm-workspace.yaml"))).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("depends on the workspace's framework packages inside the framework's workspace, and on releases outside it", () => {
     const outside = mkdtempSync(join(tmpdir(), "projected-new-"));
     try {
@@ -84,6 +97,21 @@ describe("a new service", () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  // Outside the workspace a new service depends on every framework package at the CLI's own
+  // version, so a release that leaves one package behind makes services that cannot install.
+  it("depends on framework packages released in lockstep with the CLI", () => {
+    const packages = join(workspace, "packages");
+    const versions = Object.fromEntries(
+      readdirSync(packages).map((name) => {
+        const manifest = JSON.parse(readFileSync(join(packages, name, "package.json"), "utf8")) as { name: string; version: string };
+        return [manifest.name, manifest.version];
+      }),
+    );
+    const cli = versions["@projected/cli"];
+
+    expect(Object.entries(versions).filter(([, version]) => version !== cli)).toEqual([]);
   });
 
   it("pins its other dependencies to the versions the framework is tested with", () => {

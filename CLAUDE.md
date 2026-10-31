@@ -11,7 +11,7 @@ load the `projected` skill.
   in each flavour, and the banking `ledger` pilot with its load test, `pnpm load`).
 - `skills/` — distributable agent skills; `.claude/skills/` links to them and to `vendor/`.
 - `vendor/anti-slop/` — vendored upstream. Never edit by hand: run `scripts/sync-anti-slop.sh`.
-- `docs/` — architecture and decisions, enforcement table, roadmap.
+- `docs/` — architecture and decisions, enforcement table, releasing, roadmap.
 
 ## Two flavours
 
@@ -77,6 +77,12 @@ generator or a rule's message.
 - **Templates are code.** What `projected new` writes (`packages/cli/src/scaffold/`) must compile,
   pass `projected check --strict` and its own tests in both flavours; `scaffold.test.ts` grows a
   service with every generator and runs all three. Change a template with the examples it mirrors.
+- **`skills/projected-start` drives the published CLI** for an agent with no project yet. A change
+  to `projected new service`, its next steps or what a fresh service needs updates that skill too;
+  it ships inside `@projected/cli`, so it reaches users with the next release.
+- **Packages are released in lockstep** (`docs/releasing.md`): a new service depends on every
+  framework package at the CLI's version. Try a release from packed tarballs outside the repository
+  first: the workspace hides missing files and undeclared dependencies.
 - **Generated artifacts are regenerated, never hand-edited:** `projected openapi`,
   `projected contracts --update` and `projected docs` in the examples, `projected vendor generate`
   for vendor clients.

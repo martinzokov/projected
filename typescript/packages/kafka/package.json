@@ -1,8 +1,15 @@
 {
   "name": "@projected/kafka",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Apache Kafka transport for projected's messaging: queued commands, consumers and the event relay over Kafka topics.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/kafka"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,7 +18,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@platformatic/kafka": "^2.14.0",
     "@projected/application": "workspace:*",
@@ -19,5 +29,8 @@
   },
   "devDependencies": {
     "@projected/testing": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

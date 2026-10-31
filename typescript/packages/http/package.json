@@ -1,8 +1,15 @@
 {
   "name": "@projected/http",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HTTP adapters for projected: business-operation endpoints and OpenAPI derived from contracts, typed clients, and a Result-based HTTP client.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/http"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -30,5 +37,8 @@
     "@seriousme/openapi-schema-validator": "^2.11.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

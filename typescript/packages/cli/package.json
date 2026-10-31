@@ -1,8 +1,15 @@
 {
   "name": "@projected/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The projected command line: architecture checks, OpenAPI generation and contract immutability locks.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/cli"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "bin": {
@@ -17,7 +24,10 @@
   "files": [
     "bin",
     "dist",
-    "src"
+    "src",
+    "skills",
+    "vendor",
+    "spec"
   ],
   "dependencies": {
     "@projected/application": "workspace:*",
@@ -34,5 +44,12 @@
   "devDependencies": {
     "@types/pg": "^8.23.1",
     "pg": "^8.23.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "node scripts/pack-assets.mjs copy",
+    "postpack": "node scripts/pack-assets.mjs clean"
   }
 }

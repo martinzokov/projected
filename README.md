@@ -1,21 +1,26 @@
 # projected
 
-**CQRS services — event-sourced or state-based — where you write only the business logic.**
+<p align="center"><img src="docs/assets/hero.png" alt="projected: your business logic at the core, everything else derived and enforced" width="100%"></p>
 
-Developers and AI coding agents write events, decisions, commands, queries and handlers.
-projected derives everything around them: HTTP endpoints shaped as business operations, input
-validation, OpenAPI 3.1, typed clients, message consumers, PostgreSQL persistence with optimistic
-concurrency, projections, access control, duplicate command protection and distributed tracing.
-The hexagonal architecture is enforced by the compiler and by checks that fail the build, so
-agent-written code cannot quietly erode it.
+**The starter for agentic development that doesn't rot.**
+
+You and your coding agents write the business logic: rules, operations and the data they work
+on. projected supplies everything else: HTTP endpoints, validation, OpenAPI 3.1, typed clients,
+PostgreSQL persistence with optimistic locking, Kafka/NATS messaging, access control,
+duplicate-request protection and tracing.
+
+Good design is the path of least resistance. The services follow hexagonal architecture, and
+the compiler and `projected check` fail the build when code crosses a boundary, so code written
+fast by agents can't quietly erode the design. Agents get shipped skills, generators and guard
+hooks for Claude Code, Codex and Cursor.
 
 > **Two flavours, one framework.** Each project picks one in `projected.json` when it is created,
 > and never changes it:
 >
 > | `"flavour"` | Aggregates are | A decision returns |
 > |---|---|---|
-> | `"event-sourced"` | folded from their events | the events that follow |
-> | `"state-based"` | stored as their current state, with an outbox for events | the next state, optionally with events |
+> | `"state-based"` (the usual choice) | stored as their current state, with an outbox for events | the next state, optionally with events |
+> | `"event-sourced"` (when you need full history) | folded from their events | the events that follow |
 >
 > Contracts, the HTTP and messaging protocol, transports, auth, idempotency, tracing and
 > enforcement are identical: a caller cannot tell which flavour served it. The code below is
@@ -78,13 +83,48 @@ another service through a typed client, or through Kafka or NATS.
 | [`spec/`](spec) | the language-neutral protocol ([`protocol.md`](spec/protocol.md)), wire schemas, and black-box [conformance suites](spec/conformance) any implementation can be run against |
 | [`typescript/`](typescript) | the TypeScript implementation: packages, the school example in [each](typescript/examples/school-event-sourced) [flavour](typescript/examples/school-state-based), and a [banking ledger](typescript/examples/ledger) pilot with a load test |
 | [`skills/`](skills) | AI agent skills for building with projected |
-| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [third-party APIs](docs/vendors.md), [running a service](docs/operations.md) (health, shutdown, metrics, operator tasks), [coding agents](docs/agents.md) (guard, hooks, evals), [roadmap](docs/roadmap.md) |
+| [`docs/`](docs) | [architecture and decisions](docs/architecture.md), [enforcement](docs/enforcement.md), [persistence](docs/persistence.md), [messaging](docs/messaging.md), [auth, idempotency and tracing](docs/cross-cutting.md), [third-party APIs](docs/vendors.md), [running a service](docs/operations.md) (health, shutdown, metrics, operator tasks), [coding agents](docs/agents.md) (starting a project, guard, hooks, evals), [releasing](docs/releasing.md), [roadmap](docs/roadmap.md) |
 | [`vendor/anti-slop/`](vendor/anti-slop) | vendored copy of anti-slop's skills and configs ([`UPSTREAM.md`](vendor/anti-slop/UPSTREAM.md)) |
 | [`.claude/skills/`](.claude/skills) | links making all skills available to agents working in this repo |
 
 ## Getting started
 
-Requires Node 22.12+ and pnpm 10; Docker for the integration tests.
+Requires Node 22.12+ and pnpm 10 or 11. The packages are on npm as
+[`@projected/*`](https://www.npmjs.com/org/projected).
+
+### With a coding agent
+
+Give your agent the [`projected-start`](skills/projected-start/SKILL.md) skill, then describe the
+service you want in business terms:
+
+```sh
+npx skills add martinzokov/projected --skill projected-start   # Claude Code, Codex, Cursor and others
+```
+
+> *Start a projected service for billing: customers get invoices, and an invoice can be issued
+> once its lines are final.*
+
+The agent picks the flavour, creates the service with the published CLI, installs and verifies it,
+installs the project's own skills and guard hooks (`projected agents install`), builds the first
+feature and runs it. From then on, any agent working in the service follows the installed skills.
+More in [coding agents](docs/agents.md#starting-a-project).
+
+### By hand
+
+```sh
+npx @projected/cli@latest new service billing --flavour state-based --aggregate invoice
+cd billing && git init
+pnpm install && pnpm openapi && pnpm lock && pnpm catalog && pnpm check
+pnpm exec projected agents install          # skills, AGENTS.md and guard hooks for coding agents
+pnpm exec projected new command issue-invoice --aggregate invoice --event InvoiceIssued
+pnpm build && pnpm start                    # http://localhost:3000, in memory; DATABASE_URL for PostgreSQL
+```
+
+The generated code compiles, passes `projected check` and has tests from the first command. The
+service's README lists the generators; the [`projected`](skills/projected/SKILL.md) skill walks
+through a feature.
+
+### Working on the framework
 
 ```sh
 cd typescript
@@ -94,16 +134,14 @@ docker compose up -d --wait # Postgres, Kafka, NATS
 pnpm test:integration       # every test, including the adapters against the real servers
 ```
 
-Start a service of your own — the generated code compiles, passes `projected check` and has
-tests from the first command. Inside the workspace it depends on the workspace's packages
-(elsewhere, on released versions of them):
+Inside the workspace, `projected new service` makes a service that depends on the workspace's
+packages instead of released ones:
 
 ```sh
 cd typescript
 pnpm projected new service examples/billing --flavour state-based --aggregate invoice
 pnpm install && pnpm build
 cd examples/billing && pnpm openapi && pnpm lock && pnpm catalog && pnpm check
-pnpm exec projected new command issue-invoice --aggregate invoice --event InvoiceIssued
 ```
 
 Run an example service — in memory by default, or on real infrastructure:
@@ -115,7 +153,8 @@ DATABASE_URL=postgres://projected:projected@localhost:55432/projected \
 KAFKA_BROKERS=localhost:9092 NATS_URL=nats://localhost:4222 pnpm start
 ```
 
-See [the example's README](typescript/examples/school-event-sourced/README.md) for signing in and calling it.
+See [the example's README](typescript/examples/school-event-sourced/README.md) for signing in and
+calling it, and [releasing](docs/releasing.md) for publishing the packages.
 
 ## Packages
 
@@ -141,6 +180,7 @@ See [the example's README](typescript/examples/school-event-sourced/README.md) f
 
 | Skill | Use when |
 |---|---|
+| [`projected-start`](skills/projected-start/SKILL.md) | there is no project yet — from a business idea to a running, agent-ready service |
 | [`projected`](skills/projected/SKILL.md) | building any feature — the golden path and the rules |
 | [`projected-domain-modelling`](skills/projected-domain-modelling/SKILL.md) | events, errors, aggregates, decisions, event versioning |
 | [`projected-contracts`](skills/projected-contracts/SKILL.md) | commands, queries, naming, versioning, HTTP mapping |

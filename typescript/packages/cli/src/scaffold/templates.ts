@@ -16,7 +16,21 @@ export const DEPENDENCY_VERSIONS = {
   "@stryker-mutator/core": "10.0.0",
   typescript: "6.0.3",
   vitest: "^5.0.5",
+  // Not imported by the service, but its inferred better-auth types refer to zod: declarations
+  // can name them only when zod is a direct dependency.
+  zod: "^4.6.7",
 } as const;
+
+/**
+ * The settings of a service that is not inside a pnpm workspace already. pnpm 11 refuses to
+ * install while a dependency's build script is neither allowed nor denied, and tsx's esbuild has
+ * one; `allowBuilds` is read by pnpm 10 as well.
+ */
+export const PNPM_WORKSPACE = `# pnpm's settings for this service.
+# tsx (the CLI's TypeScript loader) depends on esbuild, whose install script checks its binary.
+allowBuilds:
+  esbuild: true
+`;
 
 const FRAMEWORK = ["application", "auth-better-auth", "domain", "http", "opentelemetry", "runtime", "store-memory", "store-postgres"];
 const FRAMEWORK_DEV = ["architecture", "cli", "testing"];
@@ -65,7 +79,7 @@ export function serviceFiles(service: ServiceTemplate): Record<string, string> {
         mutate: "projected mutate",
         migrate: "projected migrate",
       },
-      dependencies: dependencies(FRAMEWORK, ["@hono/node-server", "@opentelemetry/api", "better-auth", "hono", "pg"]),
+      dependencies: dependencies(FRAMEWORK, ["@hono/node-server", "@opentelemetry/api", "better-auth", "hono", "pg", "zod"]),
       devDependencies: dependencies(FRAMEWORK_DEV, ["@stryker-mutator/core", "@types/node", "@types/pg", "typescript", "vitest"]),
     }),
     "projected.json": json({
