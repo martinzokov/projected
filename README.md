@@ -4,15 +4,53 @@
 
 **The starter for agentic development that doesn't rot.**
 
-You and your coding agents write the business logic: rules, operations and the data they work
-on. projected supplies everything else: HTTP endpoints, validation, OpenAPI 3.1, typed clients,
-PostgreSQL persistence with optimistic locking, Kafka/NATS messaging, access control,
-duplicate-request protection and tracing.
+Coding agents write code fast, and without guardrails the design erodes just as fast. projected
+gives you TypeScript backend services where your agents write only the business logic, and the
+build fails the moment they break the design. You describe what the business does; you review
+small, readable changes; the codebase in month six is shaped like the one on day one.
 
-Good design is the path of least resistance. The services follow hexagonal architecture, and
-the compiler and `projected check` fail the build when code crosses a boundary, so code written
-fast by agents can't quietly erode the design. Agents get shipped skills, generators and guard
-hooks for Claude Code, Codex and Cursor.
+It is opinionated on purpose. The choices are software craftsmanship ones, made once so neither
+you nor your agents relitigate them: domain-driven design, hexagonal architecture, CQRS, failures
+as values, immutable API versions, and tests that describe behaviour. More in
+[principles](#principles) and [architecture and decisions](docs/architecture.md).
+
+## Start with your agent
+
+Give Claude Code, Codex, Cursor or another coding agent the `projected-start` skill:
+
+```sh
+npx skills add martinzokov/projected --skill projected-start
+```
+
+Then ask for the service in business terms:
+
+> *Start a projected service for billing: customers get invoices, and an invoice can be issued
+> once its lines are final.*
+
+The agent creates the service with the [published CLI](https://www.npmjs.com/org/projected),
+verifies it, installs the project's skills and guard hooks, builds the first feature and runs it.
+You need Node 22.12+ and pnpm 10 or 11. Other ways to install the skill, and to start without an
+agent, are in [Getting started](#getting-started).
+
+## What you get
+
+- **Agents write only the business.** A feature is a pure decision, a contract and a handler,
+  with tests. HTTP endpoints, validation, OpenAPI 3.1, typed clients, PostgreSQL persistence,
+  Kafka/NATS messaging, access control, duplicate-request protection and tracing come from the
+  framework, so there is far less code to write, and to review.
+- **The design can't quietly erode.** Layer boundaries are compile errors and `projected check`
+  rules. `projected guard` runs in your agent's hooks as it edits and before it says it is done,
+  so it fixes a broken rule while the change is fresh; a pre-commit hook stops any commit, by an
+  agent or a person, that breaks one.
+- **Agents know the way.** Shipped skills tell them how to build each kind of change, and
+  generators write the stubs and tests they fill in. Names stay in business language: the
+  generators refuse CRUD verbs.
+- **APIs don't break by accident.** Every published operation version is locked, and CI fails if
+  one changes; you evolve an API by adding a version.
+- **It is a real service from the first command.** Tests, OpenAPI, auth, health checks and
+  PostgreSQL work before you write a line.
+
+## What a feature looks like
 
 > **Two flavours, one framework.** Each project picks one in `projected.json` when it is created,
 > and never changes it:
@@ -94,20 +132,9 @@ Requires Node 22.12+ and pnpm 10 or 11. The packages are on npm as
 
 ### With a coding agent
 
-Give your agent the [`projected-start`](skills/projected-start/SKILL.md) skill, then describe the
-service you want in business terms:
-
-```sh
-npx skills add martinzokov/projected --skill projected-start   # Claude Code, Codex, Cursor and others
-```
-
-> *Start a projected service for billing: customers get invoices, and an invoice can be issued
-> once its lines are final.*
-
-The agent picks the flavour, creates the service with the published CLI, installs and verifies it,
-installs the project's own skills and guard hooks (`projected agents install`), builds the first
-feature and runs it. From then on, any agent working in the service follows the installed skills.
-More in [coding agents](docs/agents.md#starting-a-project).
+[Above](#start-with-your-agent). The [`projected-start`](skills/projected-start/SKILL.md) skill
+can also be copied by hand or read straight from unpkg without installing it; see
+[coding agents](docs/agents.md#starting-a-project).
 
 ### By hand
 
