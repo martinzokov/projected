@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "In-memory adapters for every projected storage port: events, checkpoints, idempotency, documents. For tests, local development and demos.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/store-memory"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -28,5 +35,8 @@
   },
   "devDependencies": {
     "@projected/testing": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

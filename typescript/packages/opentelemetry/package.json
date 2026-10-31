@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "OpenTelemetry implementation of projected's Telemetry port: spans for operations, aggregates, event handlers, HTTP and messaging, with W3C trace-context propagation.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/opentelemetry"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,7 +18,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@projected/application": "workspace:*"
   },
@@ -27,5 +37,8 @@
     "@projected/messaging": "workspace:*",
     "@projected/store-memory": "workspace:*",
     "@projected/testing": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

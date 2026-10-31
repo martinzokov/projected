@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "Asynchronous messaging adapters for projected: queued commands, an event relay (the event store is the outbox) and consumers, over a pluggable transport.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/messaging"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -25,5 +32,8 @@
     "@projected/testing": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

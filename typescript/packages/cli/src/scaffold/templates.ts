@@ -16,6 +16,9 @@ export const DEPENDENCY_VERSIONS = {
   "@stryker-mutator/core": "10.0.0",
   typescript: "6.0.3",
   vitest: "^5.0.5",
+  // Not imported by the service, but its inferred better-auth types refer to zod: declarations
+  // can name them only when zod is a direct dependency.
+  zod: "^4.6.7",
 } as const;
 
 const FRAMEWORK = ["application", "auth-better-auth", "domain", "http", "opentelemetry", "runtime", "store-memory", "store-postgres"];
@@ -65,7 +68,7 @@ export function serviceFiles(service: ServiceTemplate): Record<string, string> {
         mutate: "projected mutate",
         migrate: "projected migrate",
       },
-      dependencies: dependencies(FRAMEWORK, ["@hono/node-server", "@opentelemetry/api", "better-auth", "hono", "pg"]),
+      dependencies: dependencies(FRAMEWORK, ["@hono/node-server", "@opentelemetry/api", "better-auth", "hono", "pg", "zod"]),
       devDependencies: dependencies(FRAMEWORK_DEV, ["@stryker-mutator/core", "@types/node", "@types/pg", "typescript", "vitest"]),
     }),
     "projected.json": json({

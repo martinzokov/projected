@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "Test helpers for projected: given/when/then for decisions, deterministic clocks and ids, and conformance suites for every store and transport.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/testing"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -42,5 +49,8 @@
   },
   "devDependencies": {
     "@projected/messaging": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,0 +1,5 @@
+
+# Copied in by `prepack` (scripts/pack-assets.mjs), removed by `postpack`.
+/skills/
+/vendor/
+/spec/

@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "better-auth integration for projected: an Authenticator that turns better-auth sessions into principals, its sign-in routes, and OpenAPI security schemes.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/auth-better-auth"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,7 +18,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
     "@projected/application": "workspace:*"
   },
@@ -22,5 +32,8 @@
     "@projected/http": "workspace:*",
     "@projected/testing": "workspace:*",
     "better-auth": "^1.7.14"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

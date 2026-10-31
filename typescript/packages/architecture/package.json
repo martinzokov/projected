@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "Architecture enforcement for projected apps: per-layer TypeScript presets, dependency-cruiser and ESLint rules for hexagonal boundaries and domain purity.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/architecture"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -35,5 +42,8 @@
   "devDependencies": {
     "@projected/application": "workspace:*",
     "@projected/domain": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "Application layer for projected: CQRS contracts, handlers, ports and the transport-neutral dispatcher. Zero I/O.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martinzokov/projected.git",
+    "directory": "typescript/packages/application"
+  },
+  "homepage": "https://github.com/martinzokov/projected#readme",
+  "bugs": "https://github.com/martinzokov/projected/issues",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -31,5 +38,8 @@
   "devDependencies": {
     "@projected/store-memory": "workspace:*",
     "@projected/testing": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
